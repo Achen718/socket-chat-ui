@@ -1,0 +1,84 @@
+import { useEffect, useRef } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useAuthStore } from '@/store';
+import { setupAuthPersistence } from '@/lib/firebase/auth';
+import { User } from '@/types';
+
+interface UseAuthReturn {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export function useAuth(): UseAuthReturn {
+  const router = useRouter();
+  const pathname = usePathname();
+  const user = useAuthStore((state) => state.user);
+  const loading = useAuthStore((state) => state.loading);
+  const error = useAuthStore((state) => state.error);
+  const initAuthListener = useAuthStore((state) => state.initAuthListener);
+
+  // Use a ref to track if the auth listener has been initialized
+  const authListenerInitialized = useRef(false);
+  const authListenerCleanup = useRef<(() => void) | null>(null);
+
+  // Initialize auth listener on mount
+  useEffect(() => {
+    // Only set up the listener once
+    if (authListenerInitialized.current) {
+      console.log('🔑 Auth Hook: Auth listener already initialized, skipping');
+      return;
+    }
+
+    console.log('🔑 Auth Hook: Setting up auth persistence and listener');
+    authListenerInitialized.current = true;
+
+    // Ensure persistence is set first
+    setupAuthPersistence().then(() => {
+      // Then initialize auth listener
+      try {
+        const unsubscribe = initAuthListener();
+        authListenerCleanup.current = unsubscribe;
+      } catch (error) {
+        console.error('🔑 Auth Hook: Error initializing auth listener', error);
+      }
+    });
+
+    // Cleanup function
+    return () => {
+      console.log('🔑 Auth Hook: Cleaning up auth listener');
+      if (authListenerCleanup.current) {
+        authListenerCleanup.current();
+        authListenerCleanup.current = null;
+      }
+    };
+  }, []); // Empty dependency array - only run once on mount
+
+  // Handle redirects based on auth state
+  useEffect(() => {
+    // Skip if still loading
+    if (loading) {
+      console.log('🔑 Auth Hook: Still loading, skipping redirect check');
+      return;
+    }
+
+    const isLoginPage = pathname === '/login' || pathname === '/signup';
+    const isAuthRequired = pathname !== '/' && !isLoginPage;
+
+    console.log(
+      `🔑 Auth Hook: Checking redirects - user: ${!!user}, isLoginPage: ${isLoginPage}, isAuthRequired: ${isAuthRequired}`
+    );
+
+    if (!user && isAuthRequired) {
+      console.log('🔑 Auth Hook: Not logged in, redirecting to login');
+      router.push('/login');
+    } else if (user && isLoginPage) {
+      console.log('🔑 Auth Hook: Already logged in, redirecting to chat');
+      router.push('/chat');
+    }
+  }, [user, loading, pathname, router]);
+
+  return { user, loading, error };
+}
+
+export default useAuth;
