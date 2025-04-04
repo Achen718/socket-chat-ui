@@ -18,7 +18,7 @@ export function MessageList() {
   const updateRefreshTime = useCallback(() => {
     lastRefreshTimeRef.current = Date.now();
     setRefreshTrigger((prev) => prev + 1); // Just to trigger re-renders when needed
-  }, []);
+  }, []); // Empty dependency array since it only uses refs and state updater
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -36,15 +36,26 @@ export function MessageList() {
   }, [messages]);
 
   // Force refresh messages when active conversation changes
+  // Use a ref to track if we've already fetched for this conversation
+  const hasInitialFetchRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (activeConversation) {
+    if (
+      activeConversation &&
+      activeConversation.id !== hasInitialFetchRef.current
+    ) {
       console.log(
         `MessageList: Active conversation changed to ${activeConversation.id}`
       );
+
+      // Update the ref to prevent repeated fetches
+      hasInitialFetchRef.current = activeConversation.id;
+
+      // Fetch messages and update refresh time
       fetchMessages();
-      updateRefreshTime();
+      lastRefreshTimeRef.current = Date.now(); // Update directly without state change
     }
-  }, [activeConversation, fetchMessages, updateRefreshTime]);
+  }, [activeConversation, fetchMessages]);
 
   // Periodically refresh messages to ensure we have the latest data
   useEffect(() => {
@@ -63,7 +74,7 @@ export function MessageList() {
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [activeConversation, fetchMessages]); // Removed lastRefresh from dependencies
+  }, [activeConversation, fetchMessages]); // Removed updateRefreshTime from dependencies
 
   // Handle manual refresh
   const handleManualRefresh = useCallback(() => {
