@@ -57,27 +57,12 @@ export function MessageList() {
     }
   }, [activeConversation, fetchMessages]);
 
-  // Periodically refresh messages to ensure we have the latest data
-  useEffect(() => {
-    if (!activeConversation) return;
-
-    const intervalId = setInterval(() => {
-      const now = Date.now();
-      const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
-
-      // If it's been more than 5 seconds since the last refresh, refresh messages
-      if (timeSinceLastRefresh > 5000) {
-        console.log('MessageList: Auto-refreshing messages');
-        fetchMessages();
-        lastRefreshTimeRef.current = now; // Update ref directly without state change
-      }
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [activeConversation, fetchMessages]); // Removed updateRefreshTime from dependencies
+  // Note: Removed auto-refresh interval that was causing focus issues
+  // Firebase listeners will automatically update messages when there are changes
 
   // Handle manual refresh
   const handleManualRefresh = useCallback(() => {
+    console.log('MessageList: Manual refresh requested');
     fetchMessages();
     updateRefreshTime();
   }, [fetchMessages, updateRefreshTime]);
