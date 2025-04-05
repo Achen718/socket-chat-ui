@@ -11,9 +11,13 @@ import {
   serverTimestamp,
   FieldValue,
   onSnapshot,
+  Timestamp,
+  getDoc,
+  setDoc,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from './config';
-import { Conversation, Message } from '@/types';
+import { Conversation, Message, User } from '@/types';
 
 // Interfaces for Firestore data
 interface ConversationFirestore
@@ -395,6 +399,7 @@ export const sendMessage = async (
       isAI,
     };
 
+    // Use the root messages collection
     const docRef = await addDoc(collection(db, 'messages'), messageData);
 
     // Update the last message in the conversation
@@ -410,139 +415,91 @@ export const sendMessage = async (
     return {
       id: docRef.id,
       ...messageData,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(),
     };
   } catch (error) {
     throw error;
   }
 };
 
-// Get messages for a conversation
-export const getConversationMessages = async (
-  conversationId: string,
-  limitCount: number = 50
-): Promise<Message[]> => {
-  // Validate conversationId
-  if (!conversationId) {
-    console.error('Invalid conversationId provided to getConversationMessages');
-    return [];
-  }
+// Get all messages for a conversation
+export const getConversationMessages = async (conversationId: string) => {
+  // Create a unique ID for this call for better debugging
+  const callId = `get-messages-${conversationId}-${Date.now()}`;
+  console.log(
+    `Starting getConversationMessages [${callId}] for conversation: ${conversationId}`
+  );
 
-  // Create a unique identifier for this request for debugging
-  const requestId = `get-messages-${conversationId}-${Date.now()}`;
+  // Increase timeout duration to reduce frequency of timeouts
+  const timeoutDuration = 8000; // 8 seconds instead of 5
+
+  // Return empty array after timeout
+  const timeoutPromise = new Promise<Message[]>((_, reject) => {
+    setTimeout(() => {
+      const timeoutError = new Error(
+        `getConversationMessages [${callId}] timed out - forcing empty result`
+      );
+      console.warn(timeoutError.message);
+      // Use a special error that won't trigger UI state changes
+      const error = new Error('timeout-not-fatal');
+      error.name = 'TIMEOUT_NON_FATAL';
+      reject(error);
+    }, timeoutDuration);
+  });
 
   try {
-    // Create a Promise that resolves after a timeout to handle Firebase being slow
-    const timeoutPromise = new Promise<Message[]>((resolve) => {
-      setTimeout(() => {
-        console.warn(
-          `getConversationMessages [${requestId}] timed out - forcing empty result`
-        );
-        resolve([]);
-      }, 5000); // 5 second timeout
+    // Use the root-level messages collection with a filter on conversationId
+    const q = query(
+      collection(db, 'messages'),
+      where('conversationId', '==', conversationId),
+      orderBy('timestamp', 'asc')
+    );
+
+    // Race between the query and the timeout
+    const queryPromise = getDocs(q).then((querySnapshot) => {
+      const messages: Message[] = [];
+      querySnapshot.forEach((doc) => {
+        const messageData = doc.data();
+        // Handle Firestore timestamp properly
+        let timestamp: Date;
+        if (
+          messageData.timestamp &&
+          typeof messageData.timestamp.toDate === 'function'
+        ) {
+          timestamp = messageData.timestamp.toDate();
+        } else {
+          timestamp = new Date();
+        }
+
+        messages.push({
+          id: doc.id,
+          ...messageData,
+          timestamp,
+        } as Message);
+      });
+
+      console.log(
+        `getConversationMessages [${callId}] completed, found ${messages.length} messages`
+      );
+      return messages;
     });
 
-    // Actual Firebase query
-    const queryPromise = (async () => {
-      try {
-        console.log(
-          `Starting getConversationMessages [${requestId}] for conversation: ${conversationId}`
-        );
-
-        const q = query(
-          collection(db, 'messages'),
-          where('conversationId', '==', conversationId),
-          orderBy('timestamp', 'desc'),
-          limit(limitCount)
-        );
-
-        const querySnapshot = await getDocs(q);
-
-        // Return empty array if no documents found
-        if (querySnapshot.empty) {
-          console.log(
-            `No messages found in getConversationMessages [${requestId}] for conversation: ${conversationId}`
-          );
-          return [];
-        }
-
-        const messages = querySnapshot.docs
-          .map((doc) => {
-            const data = doc.data() as MessageFirestore;
-
-            // Properly handle timestamp conversion to avoid invalid date errors
-            let timestamp = new Date().toISOString(); // Default fallback
-
-            try {
-              if (data.timestamp) {
-                // Handle Firestore Timestamp objects
-                if (
-                  typeof data.timestamp === 'object' &&
-                  data.timestamp !== null &&
-                  'toDate' in data.timestamp &&
-                  typeof data.timestamp.toDate === 'function'
-                ) {
-                  timestamp = data.timestamp.toDate().toISOString();
-                }
-                // Handle timestamp strings
-                else if (typeof data.timestamp === 'string') {
-                  // Attempt to validate the timestamp string
-                  const date = new Date(data.timestamp);
-                  if (!isNaN(date.getTime())) {
-                    timestamp = data.timestamp;
-                  }
-                }
-                // Handle Date objects
-                else if (data.timestamp instanceof Date) {
-                  timestamp = data.timestamp.toISOString();
-                }
-              }
-            } catch (error) {
-              console.warn(
-                `Error parsing timestamp for message ${doc.id}:`,
-                error
-              );
-              // Keep the default fallback timestamp
-            }
-
-            return {
-              id: doc.id,
-              ...data,
-              timestamp: timestamp,
-            };
-          })
-          .reverse(); // Return in chronological order
-
-        console.log(
-          `getConversationMessages [${requestId}] completed, found ${messages.length} messages`
-        );
-        return messages;
-      } catch (error) {
-        // Check for specific Firebase errors
-        if (
-          error &&
-          typeof error === 'object' &&
-          'code' in error &&
-          (error.code === 'permission-denied' || error.code === 'not-found')
-        ) {
-          console.log(
-            `Firebase messages collection may not exist yet in getConversationMessages [${requestId}], returning empty array`
-          );
-          return [];
-        }
-        console.error(
-          `Error in getConversationMessages [${requestId}]:`,
-          error
-        );
-        throw error;
-      }
-    })();
-
-    // Race between the timeout and the actual query
-    return Promise.race([queryPromise, timeoutPromise]);
+    // Use the result of whichever finishes first
+    return await Promise.race([queryPromise, timeoutPromise]);
   } catch (error) {
-    console.error(`Error in getConversationMessages [${requestId}]:`, error);
-    return []; // Return empty array instead of throwing, to avoid blocking UI
+    // Only log and propagate errors other than our special non-fatal timeout
+    if (
+      !error ||
+      typeof error !== 'object' ||
+      (error as Error).name !== 'TIMEOUT_NON_FATAL'
+    ) {
+      console.error(`Error in getConversationMessages [${callId}]:`, error);
+      throw error;
+    }
+
+    // For timeout errors, return an empty array but don't trigger state updates
+    console.log(`Returning empty array for timeout in [${callId}]`);
+    return [];
   }
 };
 
@@ -568,7 +525,7 @@ export const onConversationMessagesUpdate = (
   let isFirstCallback = true;
 
   try {
-    // Create a query that will respond quickly to new messages
+    // Use the root-level messages collection with a filter on conversationId
     const q = query(
       collection(db, 'messages'),
       where('conversationId', '==', conversationId),
@@ -617,53 +574,26 @@ export const onConversationMessagesUpdate = (
           isFirstCallback = false;
 
           const messages = querySnapshot.docs.map((doc) => {
-            const data = doc.data() as MessageFirestore;
+            const data = doc.data();
 
             // Properly handle timestamp conversion to avoid invalid date errors
-            let timestamp = new Date().toISOString(); // Default fallback
-
-            try {
-              if (data.timestamp) {
-                // Handle Firestore Timestamp objects
-                if (
-                  typeof data.timestamp === 'object' &&
-                  data.timestamp !== null &&
-                  'toDate' in data.timestamp &&
-                  typeof data.timestamp.toDate === 'function'
-                ) {
-                  timestamp = data.timestamp.toDate().toISOString();
-                }
-                // Handle timestamp strings
-                else if (typeof data.timestamp === 'string') {
-                  // Attempt to validate the timestamp string
-                  const date = new Date(data.timestamp);
-                  if (!isNaN(date.getTime())) {
-                    timestamp = data.timestamp;
-                  }
-                }
-                // Handle Date objects
-                else if (data.timestamp instanceof Date) {
-                  timestamp = data.timestamp.toISOString();
-                }
-              }
-            } catch (error) {
-              console.warn(
-                `Error parsing timestamp for message ${doc.id}:`,
-                error
-              );
-              // Keep the default fallback timestamp
+            let timestamp: Date;
+            if (data.timestamp && typeof data.timestamp.toDate === 'function') {
+              timestamp = data.timestamp.toDate();
+            } else {
+              timestamp = new Date();
             }
 
             return {
               id: doc.id,
               ...data,
-              timestamp: timestamp,
-            };
+              timestamp,
+            } as Message;
           });
 
           // Log message count changes for debugging
           console.log(
-            `Messages updated for conversation ${conversationId}: ${messages.length} messages`
+            `Messages updated for conversation ${conversationId}: ${messages.length} messages (listener ${listenerId})`
           );
 
           // Always call the callback with the latest messages

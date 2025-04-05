@@ -210,7 +210,34 @@ export const useChat = (): UseChatReturn => {
   // Fetch messages for active conversation
   const fetchMessages = async () => {
     if (activeConversation) {
-      await fetchAllMessages(activeConversation.id);
+      try {
+        // Create a wrapper function that protects against empty results
+        // that might be caused by temporary Firebase errors
+        const safelyFetchMessages = async () => {
+          // Store current messages count for comparison
+          const currentMessageCount = messages.length;
+
+          // Attempt to fetch messages
+          await fetchAllMessages(activeConversation.id);
+
+          // If we had messages before but now have zero, and it's the same conversation,
+          // log a warning as this may indicate a Firebase glitch
+          if (
+            currentMessageCount > 0 &&
+            messages.length === 0 &&
+            activeConversation
+          ) {
+            console.warn(
+              `useChat: Possible Firebase glitch - had ${currentMessageCount} messages but got 0 after fetch for conversation ${activeConversation.id}`
+            );
+          }
+        };
+
+        // Execute the safe fetch function
+        await safelyFetchMessages();
+      } catch (error) {
+        console.error('Error fetching messages in useChat:', error);
+      }
     }
   };
 

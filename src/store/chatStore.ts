@@ -257,8 +257,30 @@ export const useChatStore = create<ChatStore>()(
           setLoadingWithTimeout(true, `fetchMessages:${conversationId}`);
 
           try {
+            // Get the current state before fetching
+            const currentState = get();
+            const currentMessages = currentState.messages || [];
+
+            // Fetch new messages
             const messages = await getConversationMessages(conversationId);
 
+            // Safety check: If we previously had messages but got an empty array,
+            // and there's no clear reason (like a collection not existing),
+            // we should consider this a temporary glitch and keep the old messages
+            if (messages.length === 0 && currentMessages.length > 0) {
+              console.log(
+                `Warning: Firebase returned 0 messages for conversation ${conversationId} but we previously had ${currentMessages.length} messages. This may be a temporary error.`
+              );
+
+              // Only update loading state but keep the current messages
+              set((state) => {
+                state.loading = false;
+              });
+
+              return;
+            }
+
+            // Normal case - update with the new messages
             set((state) => {
               state.messages = messages;
               state.loading = false;

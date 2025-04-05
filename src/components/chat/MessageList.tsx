@@ -57,12 +57,84 @@ export function MessageList() {
     }
   }, [activeConversation, fetchMessages]);
 
-  // Note: Removed auto-refresh interval that was causing focus issues
-  // Firebase listeners will automatically update messages when there are changes
+  // Find the auto-refresh effect and modify it to be more reliable
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastRefresh = now - lastRefreshTimeRef.current;
+
+      // If it's been more than 8 seconds since the last refresh, refresh messages
+      if (timeSinceLastRefresh > 8000) {
+        // Increased to 8 seconds to match timeout duration
+        console.log('MessageList: Starting auto-refresh check');
+
+        // Instead of immediately calling fetchMessages, use a more careful approach
+        const checkForNewMessages = async () => {
+          try {
+            // Store the current messages for comparison
+            const currentMessageIds = new Set(messages.map((m) => m.id));
+            const currentCount = messages.length;
+
+            // Add a local flag to prevent state updates if no real changes
+            let messagesFetched = false;
+
+            // Wrap fetchMessages in a try/catch specifically for this auto-refresh
+            try {
+              await fetchMessages();
+              messagesFetched = true;
+            } catch (fetchError) {
+              console.error('Error during auto-refresh fetch:', fetchError);
+              // Don't update the timestamp on error - this allows us to try again soon
+              return;
+            }
+
+            // Only update the refresh timestamp if we actually got messages back
+            if (messagesFetched) {
+              lastRefreshTimeRef.current = now;
+
+              // Log helpful debugging info about what changed
+              if (messages.length !== currentCount) {
+                console.log(
+                  `MessageList: Refresh changed message count: ${currentCount} → ${messages.length}`
+                );
+              } else {
+                // Check if the message IDs are different even if count is the same
+                const newMessageIds = new Set(messages.map((m) => m.id));
+                const hasNewMessages = [...newMessageIds].some(
+                  (id) => !currentMessageIds.has(id)
+                );
+                const hasMissingMessages = [...currentMessageIds].some(
+                  (id) => !newMessageIds.has(id)
+                );
+
+                if (hasNewMessages || hasMissingMessages) {
+                  console.log(
+                    'MessageList: Message IDs changed but count remained the same'
+                  );
+                } else {
+                  console.log(
+                    'MessageList: Auto-refresh completed - no changes detected'
+                  );
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error during auto-refresh handling:', error);
+          }
+        };
+
+        // Run the check without awaiting it to avoid blocking
+        checkForNewMessages();
+      }
+    }, 10000); // Interval set to 10 seconds to reduce frequency
+
+    return () => clearInterval(intervalId);
+  }, [activeConversation, fetchMessages, messages]);
 
   // Handle manual refresh
   const handleManualRefresh = useCallback(() => {
-    console.log('MessageList: Manual refresh requested');
     fetchMessages();
     updateRefreshTime();
   }, [fetchMessages, updateRefreshTime]);
