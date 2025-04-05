@@ -30,6 +30,63 @@ interface MessageFirestore extends Omit<Message, 'id' | 'timestamp'> {
   timestamp: FieldValue | Date | string;
 }
 
+// Create or get a conversation between users with a deterministic ID
+export const createOrGetConversation = async (
+  participants: string[],
+  isAIChat: boolean = false
+): Promise<Conversation> => {
+  try {
+    // Sort participants to ensure consistent ID generation
+    const sortedParticipants = [...participants].sort();
+
+    // Generate a unique conversation ID based on sorted participants
+    // This ensures only one conversation can exist between the same set of users
+    const conversationId = sortedParticipants.join('_');
+
+    // Check if conversation already exists
+    const conversationRef = doc(db, 'conversations', conversationId);
+    const conversationSnap = await getDoc(conversationRef);
+
+    if (conversationSnap.exists()) {
+      // Return existing conversation
+      const data = conversationSnap.data() as ConversationFirestore;
+      return {
+        id: conversationId,
+        participants: data.participants,
+        lastMessage: data.lastMessage || undefined,
+        createdAt: data.createdAt
+          ? data.createdAt.toString()
+          : new Date().toISOString(),
+        updatedAt: data.updatedAt
+          ? data.updatedAt.toString()
+          : new Date().toISOString(),
+        isAIChat: data.isAIChat || false,
+      };
+    }
+
+    // Create new conversation with deterministic ID
+    const conversationData: ConversationFirestore = {
+      participants: sortedParticipants,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      isAIChat,
+    };
+
+    await setDoc(conversationRef, conversationData);
+
+    return {
+      id: conversationId,
+      participants: sortedParticipants,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isAIChat,
+    };
+  } catch (error) {
+    console.error('Error creating/getting conversation:', error);
+    throw error;
+  }
+};
+
 // Create a new conversation
 export const createConversation = async (
   participants: string[],
@@ -391,7 +448,7 @@ export const sendMessage = async (
 ): Promise<Message> => {
   try {
     const messageData: MessageFirestore = {
-      conversationId,
+      conversationId, // Keep this for backward compatibility
       sender,
       content,
       timestamp: serverTimestamp(),
@@ -399,8 +456,11 @@ export const sendMessage = async (
       isAI,
     };
 
-    // Use the root messages collection
-    const docRef = await addDoc(collection(db, 'messages'), messageData);
+    // Use a subcollection for messages instead of root collection
+    const docRef = await addDoc(
+      collection(db, 'conversations', conversationId, 'messages'),
+      messageData
+    );
 
     // Update the last message in the conversation
     await updateDoc(doc(db, 'conversations', conversationId), {
@@ -418,6 +478,7 @@ export const sendMessage = async (
       timestamp: new Date(),
     };
   } catch (error) {
+    console.error('Error sending message:', error);
     throw error;
   }
 };
@@ -448,10 +509,9 @@ export const getConversationMessages = async (conversationId: string) => {
   });
 
   try {
-    // Use the root-level messages collection with a filter on conversationId
+    // Use subcollection for messages instead of root collection with filter
     const q = query(
-      collection(db, 'messages'),
-      where('conversationId', '==', conversationId),
+      collection(db, 'conversations', conversationId, 'messages'),
       orderBy('timestamp', 'asc')
     );
 
@@ -473,6 +533,7 @@ export const getConversationMessages = async (conversationId: string) => {
 
         messages.push({
           id: doc.id,
+          conversationId, // Make sure this is explicitly set
           ...messageData,
           timestamp,
         } as Message);
@@ -525,10 +586,9 @@ export const onConversationMessagesUpdate = (
   let isFirstCallback = true;
 
   try {
-    // Use the root-level messages collection with a filter on conversationId
+    // Use subcollection for messages instead of root collection with filter
     const q = query(
-      collection(db, 'messages'),
-      where('conversationId', '==', conversationId),
+      collection(db, 'conversations', conversationId, 'messages'),
       orderBy('timestamp', 'asc')
     );
 
@@ -586,6 +646,7 @@ export const onConversationMessagesUpdate = (
 
             return {
               id: doc.id,
+              conversationId, // Make sure this is explicitly set
               ...data,
               timestamp,
             } as Message;
@@ -649,14 +710,20 @@ export const onConversationMessagesUpdate = (
 
 // Update message status
 export const updateMessageStatus = async (
+  conversationId: string,
   messageId: string,
   status: 'sent' | 'delivered' | 'read'
 ): Promise<void> => {
   try {
-    await updateDoc(doc(db, 'messages', messageId), {
-      status,
-    });
+    // Use the messages subcollection instead of root collection
+    await updateDoc(
+      doc(db, 'conversations', conversationId, 'messages', messageId),
+      {
+        status,
+      }
+    );
   } catch (error) {
+    console.error('Error updating message status:', error);
     throw error;
   }
 };
