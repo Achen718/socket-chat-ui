@@ -39,6 +39,7 @@ export const generateAIResponse = async (
 
   // Debug check for API key
   const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
+  console.log(`Debug - API key exists: ${!!apiKey}`);
   if (!apiKey) {
     console.error('Missing OpenRouter API key! Using fallback response.');
     return createFallbackResponse(
@@ -55,11 +56,16 @@ export const generateAIResponse = async (
     try {
       const { message, conversationId, messageHistory } = payload;
 
-      // For development and testing, provide a simulated response without calling the API
-      if (
-        process.env.NODE_ENV === 'development' &&
-        !process.env.FORCE_REAL_AI
-      ) {
+      // Debug environment variables
+      console.log(`Debug - NODE_ENV: ${process.env.NODE_ENV}`);
+      console.log(
+        `Debug - FORCE_REAL_AI exists: ${!!process.env.FORCE_REAL_AI}`
+      );
+      console.log(`Debug - FORCE_REAL_AI value: ${process.env.FORCE_REAL_AI}`);
+
+      // TEMPORARILY BYPASS DEVELOPMENT CHECK - Always use real API
+      if (false) {
+        // Was: process.env.NODE_ENV === 'development' && !process.env.FORCE_REAL_AI
         console.log('Using simulated AI response in development mode');
 
         // Simulate network delay
@@ -74,6 +80,7 @@ export const generateAIResponse = async (
         };
       }
 
+      console.log('Using REAL OpenRouter API for response generation');
       console.log(`Preparing ${messageHistory.length} messages for AI context`);
       const messages = prepareMessages(message, messageHistory);
       console.log('Messages prepared for OpenRouter API');
@@ -259,6 +266,7 @@ export const generateAIResponseServer = async (
 
     // Check for API key
     const apiKey = process.env.OPENROUTER_API_KEY;
+    console.log(`[Server] Debug - API key exists: ${!!apiKey}`);
     if (!apiKey) {
       console.error('Missing OpenRouter API key in server environment!');
       return createFallbackResponse(
@@ -267,8 +275,18 @@ export const generateAIResponseServer = async (
       );
     }
 
-    // For development and testing, provide a simulated response without calling the API
-    if (process.env.NODE_ENV === 'development' && !process.env.FORCE_REAL_AI) {
+    // Debug environment variables
+    console.log(`[Server] Debug - NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(
+      `[Server] Debug - FORCE_REAL_AI exists: ${!!process.env.FORCE_REAL_AI}`
+    );
+    console.log(
+      `[Server] Debug - FORCE_REAL_AI value: ${process.env.FORCE_REAL_AI}`
+    );
+
+    // TEMPORARILY BYPASS DEVELOPMENT CHECK - Always use real API
+    if (false) {
+      // Was: process.env.NODE_ENV === 'development' && !process.env.FORCE_REAL_AI
       console.log('[Server] Using simulated AI response in development mode');
 
       // Simulate network delay
@@ -282,6 +300,8 @@ export const generateAIResponseServer = async (
         timestamp: new Date().toISOString(),
       };
     }
+
+    console.log('[Server] Using REAL OpenRouter API for response generation');
 
     // Set a timeout for the request
     const controller = new AbortController();
