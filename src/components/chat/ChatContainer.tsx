@@ -68,7 +68,7 @@ export function ChatContainer() {
       <ChatHeader />
 
       {/* Message list contained in its own div with its own React tree */}
-      <div ref={messageListRef} className='flex-1 overflow-hidden'>
+      <div ref={messageListRef} className='flex-1 overflow-auto'>
         <MessageList
           messages={messages}
           loading={loading}
