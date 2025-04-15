@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { UserSearchDialog } from '@/components/user/UserSearchDialog';
+import { User } from '@/types';
 
 interface SideNavProps {
   isMobile?: boolean;
@@ -27,6 +29,7 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
 
   const [isCreatingAIChat, setIsCreatingAIChat] = useState(false);
   const [forceShowEmpty, setForceShowEmpty] = useState(false);
+  const [showUserSearch, setShowUserSearch] = useState(false);
 
   // Add a ref to track if we've already fetched conversations for this user
   const fetchedForUser = useRef<string | null>(null);
@@ -64,6 +67,24 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     }
   }, [user]);
 
+  // Add effect to refresh conversations periodically to ensure side nav is up to date
+  useEffect(() => {
+    if (!user || !user.id) return;
+
+    // Create a refresh interval for backup in case listeners aren't working properly
+    const refreshInterval = setInterval(() => {
+      if (user && user.id) {
+        // Use a silent refresh to not show loading indicators
+        console.log('SideNav: Silent refresh of conversations');
+        fetchConversations();
+      }
+    }, 10000); // Refresh every 10 seconds
+
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [user, fetchConversations]);
+
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
@@ -94,19 +115,26 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     }
   };
 
-  const handleNewChat = async () => {
+  const handleNewChat = () => {
+    // Show user search dialog instead of creating an AI chat
+    setShowUserSearch(true);
+  };
+
+  const handleSelectUser = async (selectedUser: User) => {
     if (!user) return;
 
-    // This would typically open a modal to select users
-    // For this example, we'll just create a chat with AI
     try {
-      const aiUserId = 'ai-assistant'; // This would be a special user ID for the AI
+      // Check if conversation already exists
       const conversation = await createNewConversation(
-        [user.id, aiUserId],
-        true
+        [user.id, selectedUser.id],
+        false // Not an AI chat
       );
+
       setActiveConversation(conversation);
       if (onItemClick) onItemClick();
+
+      // Close the dialog
+      setShowUserSearch(false);
     } catch (error) {
       console.error('Error creating new conversation:', error);
     }
@@ -185,112 +213,125 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
   };
 
   return (
-    <div
-      className={`flex flex-col h-full bg-background border-r ${
-        isMobile ? 'w-full' : 'w-64'
-      }`}
-    >
-      <div className='p-4'>
-        <Button
-          variant='default'
-          className='w-full justify-start gap-2'
-          onClick={handleNewChat}
-        >
-          <Plus className='h-4 w-4' />
-          New Chat
-        </Button>
+    <>
+      <div
+        className={`flex flex-col h-full bg-background border-r ${
+          isMobile ? 'w-full' : 'w-64'
+        }`}
+      >
+        <div className='p-4'>
+          <Button
+            variant='default'
+            className='w-full justify-start gap-2'
+            onClick={handleNewChat}
+          >
+            <Plus className='h-4 w-4' />
+            New Chat
+          </Button>
 
-        <Button
-          variant='outline'
-          className='w-full justify-start gap-2 mt-2'
-          onClick={handleNewAiChat}
-          disabled={isCreatingAIChat}
-        >
-          {isCreatingAIChat ? (
-            <>
-              <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent' />
-              Creating...
-            </>
-          ) : (
-            <>
-              <Bot className='h-4 w-4' />
-              Chat with AI
-            </>
-          )}
-        </Button>
-      </div>
-
-      <Separator />
-
-      <div className='flex-1 overflow-auto py-2'>
-        <div className='px-3 py-2'>
-          <h2 className='text-sm font-semibold'>Recent Chats</h2>
+          <Button
+            variant='outline'
+            className='w-full justify-start gap-2 mt-2'
+            onClick={handleNewAiChat}
+            disabled={isCreatingAIChat}
+          >
+            {isCreatingAIChat ? (
+              <>
+                <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent' />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Bot className='h-4 w-4' />
+                Chat with AI
+              </>
+            )}
+          </Button>
         </div>
 
-        {loading && conversations.length === 0 && !forceShowEmpty ? (
-          <div className='space-y-2 px-4'>
-            <Skeleton className='h-12 w-full' />
-            <Skeleton className='h-12 w-full' />
-            <Skeleton className='h-12 w-full' />
+        <Separator />
+
+        <div className='flex-1 overflow-auto py-2'>
+          <div className='px-3 py-2'>
+            <h2 className='text-sm font-semibold'>Recent Chats</h2>
           </div>
-        ) : (
-          <div className='space-y-1 px-1'>
-            {sortedConversations.length === 0 ? (
-              <div className='px-4 py-2 text-sm text-muted-foreground'>
-                No conversations yet. Start a new chat!
-              </div>
-            ) : (
-              sortedConversations.map((conversation) => {
-                const isActive = activeConversation?.id === conversation.id;
-                const isAI = conversation.isAIChat;
-                const otherParticipantId = getOtherParticipant(
-                  conversation.participants
-                );
 
-                // This would fetch user details in a real app
-                const otherParticipantName = isAI
-                  ? 'AI Assistant'
-                  : otherParticipantId || 'User';
+          {loading && conversations.length === 0 && !forceShowEmpty ? (
+            <div className='space-y-2 px-4'>
+              <Skeleton className='h-12 w-full' />
+              <Skeleton className='h-12 w-full' />
+              <Skeleton className='h-12 w-full' />
+            </div>
+          ) : (
+            <div className='space-y-1 px-1'>
+              {sortedConversations.length === 0 ? (
+                <div className='px-4 py-2 text-sm text-muted-foreground'>
+                  No conversations yet. Start a new chat!
+                </div>
+              ) : (
+                sortedConversations.map((conversation) => {
+                  const isActive = activeConversation?.id === conversation.id;
+                  const isAI = conversation.isAIChat;
+                  const otherParticipantId = getOtherParticipant(
+                    conversation.participants
+                  );
 
-                return (
-                  <Button
-                    key={conversation.id}
-                    variant={isActive ? 'secondary' : 'ghost'}
-                    className='w-full justify-start gap-2 h-auto py-2 px-3'
-                    onClick={() => handleConversationClick(conversation.id)}
-                  >
-                    <Avatar className='h-6 w-6'>
-                      {isAI ? (
-                        <Bot className='h-4 w-4' />
-                      ) : (
-                        <>
-                          <AvatarImage src='' alt={otherParticipantName} />
-                          <AvatarFallback>
-                            {getInitials(otherParticipantName)}
-                          </AvatarFallback>
-                        </>
-                      )}
-                    </Avatar>
-                    <div className='flex flex-col items-start flex-1 truncate'>
-                      <span className='text-sm font-medium truncate w-full'>
-                        {otherParticipantName}
-                      </span>
-                      {conversation.lastMessage && (
-                        <span className='text-xs text-muted-foreground truncate w-full'>
-                          {conversation.lastMessage.content.substring(0, 30)}
-                          {conversation.lastMessage.content.length > 30
-                            ? '...'
-                            : ''}
+                  // This would fetch user details in a real app
+                  const otherParticipantName = isAI
+                    ? 'AI Assistant'
+                    : otherParticipantId || 'User';
+
+                  // Get the formatted message text
+                  const lastMessageText = conversation.lastMessage
+                    ? conversation.lastMessage.content
+                    : 'No messages yet';
+
+                  return (
+                    <Button
+                      key={conversation.id}
+                      variant={isActive ? 'secondary' : 'ghost'}
+                      className='w-full justify-start gap-2 h-auto py-2 px-3'
+                      onClick={() => handleConversationClick(conversation.id)}
+                    >
+                      <Avatar className='h-6 w-6'>
+                        {isAI ? (
+                          <Bot className='h-4 w-4' />
+                        ) : (
+                          <>
+                            <AvatarImage src='' alt={otherParticipantName} />
+                            <AvatarFallback>
+                              {getInitials(otherParticipantName)}
+                            </AvatarFallback>
+                          </>
+                        )}
+                      </Avatar>
+                      <div className='flex flex-col items-start flex-1 truncate'>
+                        <span className='text-sm font-medium truncate w-full'>
+                          {otherParticipantName}
                         </span>
-                      )}
-                    </div>
-                  </Button>
-                );
-              })
-            )}
-          </div>
-        )}
+                        <span className='text-xs text-muted-foreground truncate w-full'>
+                          {lastMessageText.substring(0, 30)}
+                          {lastMessageText.length > 30 ? '...' : ''}
+                        </span>
+                      </div>
+                    </Button>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* User Search Dialog */}
+      {user && (
+        <UserSearchDialog
+          open={showUserSearch}
+          onOpenChange={setShowUserSearch}
+          onSelectUser={handleSelectUser}
+          currentUserId={user.id}
+        />
+      )}
+    </>
   );
 }
