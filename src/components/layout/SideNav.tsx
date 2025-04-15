@@ -153,38 +153,52 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     try {
       const aiUserId = 'ai-assistant';
 
-      console.log('Creating new AI conversation...');
-      const conversation = await createNewConversation(
-        [user.id, aiUserId],
-        true
+      // First, look for an existing AI conversation
+      const existingAiChat = conversations.find(
+        (conv) =>
+          conv.isAIChat &&
+          conv.participants.includes(user.id) &&
+          conv.participants.includes(aiUserId)
       );
-      console.log(`AI conversation created with ID: ${conversation.id}`);
+
+      let conversation;
+
+      if (existingAiChat) {
+        // Use existing conversation
+        console.log(`Using existing AI conversation: ${existingAiChat.id}`);
+        conversation = existingAiChat;
+      } else {
+        // Create new conversation only if one doesn't exist
+        console.log('Creating new AI conversation...');
+        conversation = await createNewConversation([user.id, aiUserId], true);
+        console.log(`AI conversation created with ID: ${conversation.id}`);
+
+        // Add a small delay to make sure the conversation is fully created
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Manually trigger a welcome message from the AI to make the conversation show up
+        const welcomeMessage =
+          "Hello! I'm your AI assistant. How can I help you today?";
+
+        console.log('Adding AI welcome message...');
+        try {
+          await sendFirestoreMessage(
+            conversation.id,
+            aiUserId,
+            welcomeMessage,
+            true // Mark as AI message
+          );
+          console.log('AI welcome message added successfully');
+        } catch (msgError) {
+          console.error('Error adding welcome message:', msgError);
+        }
+
+        // Force a refresh of messages
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
 
       // Set active conversation
       setActiveConversation(conversation);
-
-      // Add a small delay to make sure the conversation is fully created
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Manually trigger a welcome message from the AI to make the conversation show up
-      const welcomeMessage =
-        "Hello! I'm your AI assistant. How can I help you today?";
-
-      console.log('Adding AI welcome message...');
-      try {
-        await sendFirestoreMessage(
-          conversation.id,
-          aiUserId,
-          welcomeMessage,
-          true // Mark as AI message
-        );
-        console.log('AI welcome message added successfully');
-      } catch (msgError) {
-        console.error('Error adding welcome message:', msgError);
-      }
-
-      // Force a refresh of messages
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       if (onItemClick) {
         onItemClick();
@@ -192,7 +206,7 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     } catch (error) {
       const endTime = performance.now();
       console.error(
-        `Error creating AI conversation (${(endTime - startTime).toFixed(
+        `Error handling AI conversation (${(endTime - startTime).toFixed(
           2
         )}ms):`,
         error

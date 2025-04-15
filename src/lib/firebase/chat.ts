@@ -39,9 +39,23 @@ export const createOrGetConversation = async (
     // Sort participants to ensure consistent ID generation
     const sortedParticipants = [...participants].sort();
 
-    // Generate a unique conversation ID based on sorted participants
-    // This ensures only one conversation can exist between the same set of users
-    const conversationId = sortedParticipants.join('_');
+    let conversationId = '';
+
+    // For AI chats, ensure we always use a consistent ID pattern
+    if (isAIChat) {
+      // Find the user ID (non-AI participant)
+      const userId = sortedParticipants.find((id) => id !== 'ai-assistant');
+      if (userId) {
+        // Always use the same format for AI chats: userId_ai-assistant
+        conversationId = `${userId}_ai-assistant`;
+      } else {
+        // Fallback to regular ID generation if somehow both participants are AI
+        conversationId = sortedParticipants.join('_');
+      }
+    } else {
+      // Regular conversation - generate ID based on sorted participants
+      conversationId = sortedParticipants.join('_');
+    }
 
     // Check if conversation already exists
     const conversationRef = doc(db, 'conversations', conversationId);
@@ -114,6 +128,11 @@ export const createConversation = async (
   isAIChat: boolean = false
 ): Promise<Conversation> => {
   try {
+    // For AI chats, always use the deterministic ID approach
+    if (isAIChat) {
+      return await createOrGetConversation(participants, true);
+    }
+
     // Check if conversation already exists between these participants
     if (participants.length === 2 && !isAIChat) {
       const existingConversation = await getConversationByParticipants(
@@ -728,41 +747,99 @@ export const sendMessage = async (
       if (conversationSnap.exists()) {
         const conversationData = conversationSnap.data();
         const participants = conversationData.participants || [];
+        const isAIChat = conversationData.isAIChat || false;
 
         // Create a batch to update both users' userConversations
         const batch = writeBatch(db);
 
-        // Update lastReadTimestamp for sender (they've obviously read their own message)
-        const senderConversationRef = doc(
-          db,
-          'userConversations',
-          `${sender}_${conversationId}`
-        );
-
-        batch.update(senderConversationRef, {
-          lastReadTimestamp: serverTimestamp(),
-        });
-
-        // Force an update to ALL participants' userConversation docs to ensure
-        // the sidebar will refresh for all users
-        for (const participantId of participants) {
-          // Skip if this is the sender (already updated above)
-          if (participantId === sender) continue;
-
-          // Skip AI assistant
-          if (participantId === 'ai-assistant') continue;
-
-          // Create a reference to this participant's userConversation document
-          const userConversationRef = doc(
-            db,
-            'userConversations',
-            `${participantId}_${conversationId}`
+        // First, check if this is an AI chat to handle the userConversation IDs correctly
+        if (isAIChat) {
+          // For AI chats, the non-AI user should have userConversation doc with ID: userID_conversationId
+          const userId = participants.find(
+            (id: string) => id !== 'ai-assistant'
           );
 
-          // Touch the document to trigger updates (updatedAt will trigger listeners)
-          batch.update(userConversationRef, {
-            updatedAt: serverTimestamp(),
-          });
+          if (userId) {
+            // For messages from the AI, update the user's last read timestamp
+            if (sender === 'ai-assistant') {
+              const userConversationRef = doc(
+                db,
+                'userConversations',
+                `${userId}_${conversationId}`
+              );
+
+              // Use set with merge for safety - if doc doesn't exist, create it
+              batch.set(
+                userConversationRef,
+                {
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
+            }
+            // For messages from the user, update their last read timestamp
+            else if (sender === userId) {
+              const userConversationRef = doc(
+                db,
+                'userConversations',
+                `${userId}_${conversationId}`
+              );
+
+              batch.set(
+                userConversationRef,
+                {
+                  lastReadTimestamp: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                },
+                { merge: true }
+              );
+            }
+          }
+        }
+        // Regular chat between users
+        else {
+          // Update lastReadTimestamp for sender (they've obviously read their own message)
+          const senderConversationRef = doc(
+            db,
+            'userConversations',
+            `${sender}_${conversationId}`
+          );
+
+          // Use set with merge instead of update for safety
+          batch.set(
+            senderConversationRef,
+            {
+              lastReadTimestamp: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          // Force an update to ALL participants' userConversation docs to ensure
+          // the sidebar will refresh for all users
+          for (const participantId of participants) {
+            // Skip if this is the sender (already updated above)
+            if (participantId === sender) continue;
+
+            // Skip AI assistant
+            if (participantId === 'ai-assistant') continue;
+
+            // Create a reference to this participant's userConversation document
+            const userConversationRef = doc(
+              db,
+              'userConversations',
+              `${participantId}_${conversationId}`
+            );
+
+            // Use set with merge instead of update for safety
+            batch.set(
+              userConversationRef,
+              {
+                updatedAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
         }
 
         // Commit all the updates
