@@ -450,17 +450,77 @@ export const useChatStore = create<ChatStore>()(
 
       // Initialize conversations listener
       initConversationsListener: (userId: string) => {
-        // console.log(
-        //   'Setting up Firebase conversations listener for user:',
-        //   userId
-        // );
+        console.log(
+          'Setting up Firebase conversations listener for user:',
+          userId
+        );
 
         return onUserConversationsUpdate(userId, (conversations) => {
-          // console.log('Conversations update received:', conversations.length);
+          console.log('Conversations update received:', conversations.length);
 
+          // Force a refresh of all conversation data when there's an update
+          if (conversations.length > 0) {
+            // This helps ensure we have the most current data for all conversations
+            const currentState = get();
+
+            // Check if any conversation's lastMessage has changed compared to our local state
+            const hasMessageChanges = conversations.some((newConversation) => {
+              const existingConversation = currentState.conversations.find(
+                (c) => c.id === newConversation.id
+              );
+
+              if (!existingConversation) return true; // New conversation
+
+              // Check if lastMessage content has changed
+              return (
+                existingConversation.lastMessage?.content !==
+                newConversation.lastMessage?.content
+              );
+            });
+
+            // If we detected message changes, log it
+            if (hasMessageChanges) {
+              console.log(
+                'Detected lastMessage changes in conversations update'
+              );
+            }
+          }
+
+          // Update the conversations
           set((state) => {
+            // Track if we need to update the active conversation
+            let shouldUpdateActive = false;
+            let updatedActiveConversation = null;
+
+            // If we have an active conversation, find the updated version
+            if (state.activeConversation) {
+              // Look for the updated version of the active conversation
+              const updatedConversation = conversations.find(
+                (c) => c.id === state.activeConversation?.id
+              );
+
+              // If found and has different lastMessage, update it
+              if (updatedConversation) {
+                if (
+                  // Check if lastMessage content has changed
+                  state.activeConversation.lastMessage?.content !==
+                  updatedConversation.lastMessage?.content
+                ) {
+                  shouldUpdateActive = true;
+                  updatedActiveConversation = updatedConversation;
+                }
+              }
+            }
+
+            // Always update the conversations list
             state.conversations = conversations;
-            state.loading = false; // Ensure loading is set to false when conversations are updated
+
+            // Also update the active conversation if needed
+            if (shouldUpdateActive && updatedActiveConversation) {
+              state.activeConversation = updatedActiveConversation;
+            }
+
+            state.loading = false; // Ensure loading is set to false
           });
         });
       },
