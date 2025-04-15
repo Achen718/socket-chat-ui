@@ -20,7 +20,7 @@ export default function ChatPage() {
 
     // If we're not authenticated after loading completes, redirect to login
     if (!authLoading && !user) {
-      router.push('/login');
+      router.push('/auth/login');
     }
 
     return () => clearTimeout(timer);

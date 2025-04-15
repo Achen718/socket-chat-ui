@@ -8,6 +8,14 @@ interface UseAuthReturn {
   user: User | null;
   loading: boolean;
   error: string | null;
+  loginWithEmail: (email: string, password: string) => Promise<User>;
+  loginWithGoogle: () => Promise<User>;
+  registerWithEmail: (
+    email: string,
+    password: string,
+    displayName: string
+  ) => Promise<User>;
+  logout: () => Promise<void>;
 }
 
 export function useAuth(): UseAuthReturn {
@@ -17,6 +25,10 @@ export function useAuth(): UseAuthReturn {
   const loading = useAuthStore((state) => state.loading);
   const error = useAuthStore((state) => state.error);
   const initAuthListener = useAuthStore((state) => state.initAuthListener);
+  const loginWithEmail = useAuthStore((state) => state.loginWithEmail);
+  const loginWithGoogle = useAuthStore((state) => state.loginWithGoogle);
+  const registerWithEmail = useAuthStore((state) => state.registerWithEmail);
+  const logout = useAuthStore((state) => state.logout);
 
   // Use a ref to track if the auth listener has been initialized
   const authListenerInitialized = useRef(false);
@@ -62,7 +74,10 @@ export function useAuth(): UseAuthReturn {
       return;
     }
 
-    const isLoginPage = pathname === '/login' || pathname === '/signup';
+    const isLoginPage =
+      pathname === '/auth/login' ||
+      pathname === '/auth/signup' ||
+      pathname === '/auth/register';
     const isAuthRequired = pathname !== '/' && !isLoginPage;
 
     console.log(
@@ -71,14 +86,22 @@ export function useAuth(): UseAuthReturn {
 
     if (!user && isAuthRequired) {
       console.log('🔑 Auth Hook: Not logged in, redirecting to login');
-      router.push('/login');
+      router.push('/auth/login');
     } else if (user && isLoginPage) {
       console.log('🔑 Auth Hook: Already logged in, redirecting to chat');
       router.push('/chat');
     }
   }, [user, loading, pathname, router]);
 
-  return { user, loading, error };
+  return {
+    user,
+    loading,
+    error,
+    loginWithEmail,
+    loginWithGoogle,
+    registerWithEmail,
+    logout,
+  };
 }
 
 export default useAuth;
