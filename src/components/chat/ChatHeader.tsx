@@ -12,10 +12,46 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useEffect, useState } from 'react';
+import { getUserById, formatUserDisplayName } from '@/lib/firebase/user';
+import { User } from '@/types';
 
 export function ChatHeader() {
   const { activeConversation } = useChat();
   const { user } = useAuth();
+  const [otherUser, setOtherUser] = useState<User | null>(null);
+
+  // Find the other participant in the conversation
+  const otherParticipantId = activeConversation?.participants.find(
+    (id) => id !== user?.id
+  );
+
+  // Check if this is an AI chat
+  const isAIChat = activeConversation?.isAIChat;
+
+  // Fetch other user's details when otherParticipantId changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchUserDetails = async () => {
+      if (!otherParticipantId || isAIChat) return;
+
+      try {
+        const userData = await getUserById(otherParticipantId);
+        if (isMounted) {
+          setOtherUser(userData);
+        }
+      } catch (error) {
+        console.error('Error fetching user details:', error);
+      }
+    };
+
+    fetchUserDetails();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [otherParticipantId, isAIChat]);
 
   if (!activeConversation) {
     return (
@@ -25,16 +61,12 @@ export function ChatHeader() {
     );
   }
 
-  // Find the other participant in the conversation
-  const otherParticipantId = activeConversation.participants.find(
-    (id) => id !== user?.id
-  );
-
-  // Check if this is an AI chat
-  const isAIChat = activeConversation.isAIChat;
-
-  // Get the display name (in a real app you would fetch this from the user's profile)
-  const displayName = isAIChat ? 'AI Assistant' : otherParticipantId || 'User';
+  // Get the display name
+  const displayName = isAIChat
+    ? 'AI Assistant'
+    : otherUser
+    ? formatUserDisplayName(otherUser)
+    : 'Loading...';
 
   return (
     <div className='h-16 border-b bg-background flex items-center justify-between px-4'>
@@ -44,7 +76,7 @@ export function ChatHeader() {
             <Bot className='h-5 w-5' />
           ) : (
             <>
-              <AvatarImage src='' alt={displayName} />
+              <AvatarImage src={otherUser?.photoURL || ''} alt={displayName} />
               <AvatarFallback>
                 {displayName.substring(0, 2).toUpperCase()}
               </AvatarFallback>
@@ -55,7 +87,9 @@ export function ChatHeader() {
         <div>
           <div className='font-semibold'>{displayName}</div>
           <div className='text-xs text-muted-foreground'>
-            {isAIChat ? 'AI Powered Assistant' : 'Online'}
+            {isAIChat
+              ? 'AI Powered Assistant'
+              : otherUser?.status || 'Loading...'}
           </div>
         </div>
       </div>
