@@ -5,6 +5,7 @@ import { Plus, Bot } from 'lucide-react';
 import { useAuth, useChat } from '@/hooks';
 import { sendMessage as sendFirestoreMessage } from '@/lib/firebase/chat';
 import { formatUserDisplayName } from '@/lib/firebase/user';
+import { db } from '@/lib/firebase/config';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -70,6 +71,60 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
       fetchedForUser.current = null;
     }
   }, [user]);
+
+  // Preload user data on mount
+  useEffect(() => {
+    const preloadUserData = async () => {
+      try {
+        // Check localStorage first to see if we already have data
+        if (
+          typeof window !== 'undefined' &&
+          localStorage.getItem('userCache')
+        ) {
+          console.log('User data already preloaded from localStorage');
+          return;
+        }
+
+        // This will trigger a background fetch of all users
+        if (user && user.id) {
+          console.log('Preloading user data in background');
+
+          // Import function dynamically to avoid circular dependencies
+          const { getUsersByIds } = await import('@/lib/firebase/user');
+
+          // Get a list of most recent users from the Firestore "users" collection
+          // This ensures we have display names ready for common contacts
+          try {
+            const { collection, query, orderBy, limit, getDocs } = await import(
+              'firebase/firestore'
+            );
+            const usersRef = collection(db, 'users');
+            const recentUsersQuery = query(
+              usersRef,
+              orderBy('updatedAt', 'desc'),
+              limit(20)
+            );
+            const snapshot = await getDocs(recentUsersQuery);
+
+            // Get IDs of users to preload
+            const userIds = snapshot.docs.map((doc) => doc.id);
+
+            // Fetch all user data (will be cached internally)
+            if (userIds.length > 0) {
+              await getUsersByIds(userIds);
+              console.log(`Preloaded data for ${userIds.length} users`);
+            }
+          } catch (error) {
+            console.error('Error preloading user data:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Error in preloadUserData:', error);
+      }
+    };
+
+    preloadUserData();
+  }, [user?.id]);
 
   // Add effect to refresh conversations periodically to ensure side nav is up to date
   useEffect(() => {
@@ -373,6 +428,13 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
                     conversation.participants
                   );
 
+                  // Check if we're still loading this participant's data
+                  const isParticipantLoading =
+                    !isAI &&
+                    otherParticipantId &&
+                    !participantUsers.has(otherParticipantId) &&
+                    otherParticipantId !== 'ai-assistant';
+
                   // Use the participant display name function to get a user-friendly name
                   const otherParticipantName = isAI
                     ? 'AI Assistant'
@@ -403,9 +465,13 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
                         )}
                       </Avatar>
                       <div className='flex flex-col items-start flex-1 truncate'>
-                        <span className='text-sm font-medium truncate w-full'>
-                          {otherParticipantName}
-                        </span>
+                        {isParticipantLoading ? (
+                          <Skeleton className='h-4 w-24 my-0.5' />
+                        ) : (
+                          <span className='text-sm font-medium truncate w-full'>
+                            {otherParticipantName}
+                          </span>
+                        )}
                         <span className='text-xs text-muted-foreground truncate w-full'>
                           {lastMessageText.substring(0, 30)}
                           {lastMessageText.length > 30 ? '...' : ''}

@@ -9,17 +9,53 @@ import {
 import { db } from './config';
 import { User } from '@/types';
 
-// Cache user data to reduce Firebase reads
-const userCache = new Map<
+// Initialize cache from localStorage if available
+const initializeCache = (): Map<
   string,
   {
     user: User;
     timestamp: number;
   }
->();
+> => {
+  if (typeof window === 'undefined') return new Map(); // Server-side rendering check
 
-// Cache expiration time (10 minutes)
-const CACHE_EXPIRATION = 10 * 60 * 1000;
+  try {
+    const storedCache = localStorage.getItem('userCache');
+    if (storedCache) {
+      const parsed = JSON.parse(storedCache);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (error) {
+    console.error('Error loading user cache from localStorage:', error);
+  }
+
+  return new Map();
+};
+
+// Cache user data to reduce Firebase reads
+const userCache = initializeCache();
+
+// Cache expiration time (1 hour for localStorage persistence)
+const CACHE_EXPIRATION = 60 * 60 * 1000;
+
+// Save cache to localStorage (debounced)
+let saveCacheTimeout: NodeJS.Timeout | null = null;
+const saveCache = () => {
+  if (typeof window === 'undefined') return; // Server-side rendering check
+
+  // Clear any existing timeout
+  if (saveCacheTimeout) clearTimeout(saveCacheTimeout);
+
+  // Create a new debounced save
+  saveCacheTimeout = setTimeout(() => {
+    try {
+      const cacheObj = Object.fromEntries(userCache);
+      localStorage.setItem('userCache', JSON.stringify(cacheObj));
+    } catch (error) {
+      console.error('Error saving user cache to localStorage:', error);
+    }
+  }, 1000); // Debounce for 1 second
+};
 
 /**
  * Get user details by ID, with caching
@@ -60,6 +96,9 @@ export const getUserById = async (userId: string): Promise<User | null> => {
       user,
       timestamp: now,
     });
+
+    // Save to localStorage
+    saveCache();
 
     return user;
   } catch (error) {
@@ -170,6 +209,9 @@ export const getUsersByIds = async (
 
         result.set(user.id, user);
       });
+
+      // Save batch of users to localStorage
+      saveCache();
     }
 
     return result;
