@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Plus, Bot } from 'lucide-react';
 import { useAuth, useChat } from '@/hooks';
 import { sendMessage as sendFirestoreMessage } from '@/lib/firebase/chat';
+import { formatUserDisplayName } from '@/lib/firebase/user';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,6 +31,9 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
   const [isCreatingAIChat, setIsCreatingAIChat] = useState(false);
   const [forceShowEmpty, setForceShowEmpty] = useState(false);
   const [showUserSearch, setShowUserSearch] = useState(false);
+  const [participantUsers, setParticipantUsers] = useState<Map<string, User>>(
+    new Map()
+  );
 
   // Add a ref to track if we've already fetched conversations for this user
   const fetchedForUser = useRef<string | null>(null);
@@ -85,6 +89,38 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     };
   }, [user, fetchConversations]);
 
+  // Fetch user data for conversation participants
+  useEffect(() => {
+    const fetchParticipantUsers = async () => {
+      if (!conversations.length) return;
+
+      try {
+        // Collect all participant IDs
+        const participantIds = new Set<string>();
+
+        conversations.forEach((conversation) => {
+          // Skip AI participants
+          conversation.participants.forEach((id) => {
+            if (id !== 'ai-assistant' && id !== user?.id) {
+              participantIds.add(id);
+            }
+          });
+        });
+
+        // Convert to array and fetch
+        if (participantIds.size > 0) {
+          const { getUsersByIds } = await import('@/lib/firebase/user');
+          const users = await getUsersByIds(Array.from(participantIds));
+          setParticipantUsers(users);
+        }
+      } catch (error) {
+        console.error('Error fetching participant user data:', error);
+      }
+    };
+
+    fetchParticipantUsers();
+  }, [conversations, user?.id]);
+
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
@@ -105,6 +141,25 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
   const getOtherParticipant = (participantIds: string[]) => {
     if (!user) return null;
     return participantIds.find((id) => id !== user.id) || null;
+  };
+
+  // Get a display name for a user ID
+  const getParticipantDisplayName = (userId: string | null): string => {
+    if (!userId) return 'Unknown User';
+
+    // Return from cache if available
+    const cachedUser = participantUsers.get(userId);
+    if (cachedUser) {
+      return formatUserDisplayName(cachedUser);
+    }
+
+    // For AI assistant
+    if (userId === 'ai-assistant') {
+      return 'AI Assistant';
+    }
+
+    // Return the userId as a fallback while we're fetching the user data
+    return userId;
   };
 
   const handleConversationClick = (conversationId: string) => {
@@ -318,10 +373,10 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
                     conversation.participants
                   );
 
-                  // This would fetch user details in a real app
+                  // Use the participant display name function to get a user-friendly name
                   const otherParticipantName = isAI
                     ? 'AI Assistant'
-                    : otherParticipantId || 'User';
+                    : getParticipantDisplayName(otherParticipantId);
 
                   // Get the formatted message text
                   const lastMessageText = conversation.lastMessage
