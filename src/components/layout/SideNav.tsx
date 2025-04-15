@@ -162,6 +162,7 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
       );
 
       let conversation;
+      let isNewConversation = false;
 
       if (existingAiChat) {
         // Use existing conversation
@@ -172,33 +173,60 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
         console.log('Creating new AI conversation...');
         conversation = await createNewConversation([user.id, aiUserId], true);
         console.log(`AI conversation created with ID: ${conversation.id}`);
+        isNewConversation = true;
 
         // Add a small delay to make sure the conversation is fully created
         await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Manually trigger a welcome message from the AI to make the conversation show up
-        const welcomeMessage =
-          "Hello! I'm your AI assistant. How can I help you today?";
-
-        console.log('Adding AI welcome message...');
-        try {
-          await sendFirestoreMessage(
-            conversation.id,
-            aiUserId,
-            welcomeMessage,
-            true // Mark as AI message
-          );
-          console.log('AI welcome message added successfully');
-        } catch (msgError) {
-          console.error('Error adding welcome message:', msgError);
-        }
-
-        // Force a refresh of messages
-        await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
-      // Set active conversation
+      // Set active conversation - do this early so we can access messages
       setActiveConversation(conversation);
+
+      // Only send a welcome message if this is a new conversation OR
+      // if the conversation exists but has no messages
+      if (isNewConversation || !conversation.lastMessage) {
+        // First check if there are any existing messages
+        try {
+          const { getConversationMessages } = await import(
+            '@/lib/firebase/chat'
+          );
+          const existingMessages = await getConversationMessages(
+            conversation.id
+          );
+
+          // Only send welcome message if there are no existing messages
+          if (existingMessages.length === 0) {
+            console.log(
+              'No existing messages found, adding AI welcome message...'
+            );
+
+            // Manually trigger a welcome message from the AI
+            const welcomeMessage =
+              "Hello! I'm your AI assistant. How can I help you today?";
+
+            try {
+              await sendFirestoreMessage(
+                conversation.id,
+                aiUserId,
+                welcomeMessage,
+                true // Mark as AI message
+              );
+              console.log('AI welcome message added successfully');
+
+              // Force a refresh of messages
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            } catch (msgError) {
+              console.error('Error adding welcome message:', msgError);
+            }
+          } else {
+            console.log(
+              `Found ${existingMessages.length} existing messages, skipping welcome message`
+            );
+          }
+        } catch (checkError) {
+          console.error('Error checking for existing messages:', checkError);
+        }
+      }
 
       if (onItemClick) {
         onItemClick();
