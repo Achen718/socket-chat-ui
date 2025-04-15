@@ -3,7 +3,6 @@ import {
   query,
   where,
   orderBy,
-  limit,
   addDoc,
   updateDoc,
   doc,
@@ -11,13 +10,13 @@ import {
   serverTimestamp,
   FieldValue,
   onSnapshot,
-  Timestamp,
   getDoc,
   setDoc,
-  arrayUnion,
+  writeBatch,
+  limit,
 } from 'firebase/firestore';
 import { db } from './config';
-import { Conversation, Message, User } from '@/types';
+import { Conversation, Message } from '@/types';
 
 // Interfaces for Firestore data
 interface ConversationFirestore
@@ -26,6 +25,7 @@ interface ConversationFirestore
   updatedAt: FieldValue | Date | string;
 }
 
+// Message interface for Firestore
 interface MessageFirestore extends Omit<Message, 'id' | 'timestamp'> {
   timestamp: FieldValue | Date | string;
 }
@@ -74,6 +74,27 @@ export const createOrGetConversation = async (
 
     await setDoc(conversationRef, conversationData);
 
+    // Create userConversation records for each participant
+    for (const userId of sortedParticipants) {
+      const otherParticipantId = sortedParticipants.find((id) => id !== userId);
+
+      // Skip creating userConversation for AI chats if the other participant is AI
+      if (isAIChat && otherParticipantId === 'ai-assistant') continue;
+
+      const userConversationRef = doc(
+        db,
+        'userConversations',
+        `${userId}_${conversationId}`
+      );
+      await setDoc(userConversationRef, {
+        userId,
+        conversationId,
+        otherParticipantId:
+          otherParticipantId || (isAIChat ? 'ai-assistant' : ''),
+        lastReadTimestamp: serverTimestamp(),
+      });
+    }
+
     return {
       id: conversationId,
       participants: sortedParticipants,
@@ -92,94 +113,59 @@ export const createConversation = async (
   participants: string[],
   isAIChat: boolean = false
 ): Promise<Conversation> => {
-  // Remove unused startTime
-  // const startTime = performance.now();
-  // console.log(
-  //   `Starting createConversation: participants=${participants.join(
-  //     ','
-  //   )}, isAIChat=${isAIChat}`
-  // );
-
   try {
     // Check if conversation already exists between these participants
     if (participants.length === 2 && !isAIChat) {
-      // console.log('Checking for existing conversation...');
       const existingConversation = await getConversationByParticipants(
         participants
       );
       if (existingConversation) {
-        // console.log(`Found existing conversation: ${existingConversation.id}`);
         return existingConversation;
       }
     }
 
-    // console.log('Creating new conversation in Firestore...');
-    const conversationData: ConversationFirestore = {
+    // Create new conversation
+    const conversationRef = await addDoc(collection(db, 'conversations'), {
       participants,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       isAIChat,
-    };
+    });
 
-    try {
-      const docRef = await addDoc(
-        collection(db, 'conversations'),
-        conversationData
+    // Create userConversation records for each participant
+    for (const userId of participants) {
+      // Find the other participant
+      const otherParticipantIds = participants.filter((id) => id !== userId);
+      const otherParticipantId =
+        otherParticipantIds.length > 0
+          ? otherParticipantIds[0]
+          : isAIChat
+          ? 'ai-assistant'
+          : '';
+
+      // Skip creating userConversation for AI assistant
+      if (userId === 'ai-assistant') continue;
+
+      await setDoc(
+        doc(db, 'userConversations', `${userId}_${conversationRef.id}`),
+        {
+          userId,
+          conversationId: conversationRef.id,
+          otherParticipantId,
+          lastReadTimestamp: serverTimestamp(),
+        }
       );
-
-      // console.log(`Conversation created successfully with ID: ${docRef.id}`);
-
-      const result = {
-        id: docRef.id,
-        participants,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isAIChat,
-      };
-
-      // Remove unused endTime
-      // const endTime = performance.now();
-      // console.log(
-      //   `createConversation completed in ${(endTime - startTime).toFixed(2)}ms`
-      // );
-
-      return result;
-    } catch (innerError: unknown) {
-      // Check specifically for permission errors
-      if (
-        innerError &&
-        typeof innerError === 'object' &&
-        'code' in innerError
-      ) {
-        const errorObj = innerError as { code: string; message?: string };
-
-        if (errorObj.code === 'permission-denied') {
-          // console.error(
-          //   'Firebase permission denied. Please check your security rules.'
-          // );
-          throw new Error(
-            `Firebase permission denied: ${errorObj.message || 'Unknown error'}`
-          );
-        }
-
-        // Check for other common Firebase errors
-        if (errorObj.code === 'unavailable') {
-          // console.error(
-          //   'Firebase service is currently unavailable. Please try again later.'
-          // );
-          throw new Error('Firebase service is unavailable');
-        }
-      }
-
-      throw innerError;
     }
+
+    return {
+      id: conversationRef.id,
+      participants,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isAIChat,
+    };
   } catch (error) {
-    // Remove unused endTime
-    // const endTime = performance.now();
-    // console.error(
-    //   `Error in createConversation (${(endTime - startTime).toFixed(2)}ms):`,
-    //   error
-    // );
+    console.error('Error creating conversation:', error);
     throw error;
   }
 };
@@ -189,6 +175,33 @@ export const getConversationByParticipants = async (
   participants: string[]
 ): Promise<Conversation | null> => {
   try {
+    // Sort participants to ensure consistent querying
+    const sortedParticipants = [...participants].sort();
+
+    // Generate deterministic ID if there are exactly 2 participants
+    if (sortedParticipants.length === 2) {
+      const conversationId = sortedParticipants.join('_');
+      const conversationRef = doc(db, 'conversations', conversationId);
+      const conversationSnap = await getDoc(conversationRef);
+
+      if (conversationSnap.exists()) {
+        const data = conversationSnap.data() as ConversationFirestore;
+        return {
+          id: conversationId,
+          participants: data.participants,
+          lastMessage: data.lastMessage || undefined,
+          createdAt: data.createdAt
+            ? data.createdAt.toString()
+            : new Date().toISOString(),
+          updatedAt: data.updatedAt
+            ? data.updatedAt.toString()
+            : new Date().toISOString(),
+          isAIChat: data.isAIChat || false,
+        };
+      }
+    }
+
+    // Otherwise, do a more general query
     const q = query(
       collection(db, 'conversations'),
       where('participants', 'array-contains-any', participants)
@@ -254,10 +267,10 @@ export const getUserConversations = async (
           `Starting getUserConversations [${requestId}] for user: ${userId}`
         );
 
+        // Query userConversations collection instead
         const q = query(
-          collection(db, 'conversations'),
-          where('participants', 'array-contains', userId),
-          orderBy('updatedAt', 'desc')
+          collection(db, 'userConversations'),
+          where('userId', '==', userId)
         );
 
         const querySnapshot = await getDocs(q);
@@ -270,19 +283,33 @@ export const getUserConversations = async (
           return [];
         }
 
-        const conversations = querySnapshot.docs.map((doc) => {
-          const data = doc.data() as ConversationFirestore;
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt
-              ? data.createdAt.toString()
-              : new Date().toISOString(),
-            updatedAt: data.updatedAt
-              ? data.updatedAt.toString()
-              : new Date().toISOString(),
-          };
-        });
+        // Get all conversation IDs
+        const conversationIds = querySnapshot.docs.map(
+          (doc) => doc.data().conversationId
+        );
+
+        // Fetch all conversation documents
+        const conversations: Conversation[] = [];
+        for (const conversationId of conversationIds) {
+          const conversationDoc = await getDoc(
+            doc(db, 'conversations', conversationId)
+          );
+          if (conversationDoc.exists()) {
+            const data = conversationDoc.data() as ConversationFirestore;
+            conversations.push({
+              id: conversationDoc.id,
+              participants: data.participants,
+              lastMessage: data.lastMessage || undefined,
+              createdAt: data.createdAt
+                ? data.createdAt.toString()
+                : new Date().toISOString(),
+              updatedAt: data.updatedAt
+                ? data.updatedAt.toString()
+                : new Date().toISOString(),
+              isAIChat: data.isAIChat || false,
+            });
+          }
+        }
 
         console.log(
           `getUserConversations [${requestId}] completed, found ${conversations.length} conversations`
@@ -310,7 +337,7 @@ export const getUserConversations = async (
     return Promise.race([queryPromise, timeoutPromise]);
   } catch (error) {
     console.error(`Error in getUserConversations [${requestId}]:`, error);
-    return []; // Return empty array instead of throwing, to avoid blocking UI
+    return [];
   }
 };
 
@@ -333,66 +360,162 @@ export const onUserConversationsUpdate = (
   // Add a flag to track if this is the first callback
   let isFirstCallback = true;
 
+  // Declare timeoutId at function level to be available in both try and catch blocks
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   try {
+    // Listen to userConversations collection
     const q = query(
-      collection(db, 'conversations'),
-      where('participants', 'array-contains', userId),
-      orderBy('updatedAt', 'desc')
+      collection(db, 'userConversations'),
+      where('userId', '==', userId)
     );
 
     // Add a timeout to handle cases where Firebase might be slow or collections don't exist
     // This ensures the UI doesn't stay in loading state indefinitely
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       console.warn(
         `Conversations listener ${listenerId} timed out - forcing empty result`
       );
       callback([]);
-    }, 5000); // 5 second timeout
+    }, 5000);
 
+    // Set up the listener
     const unsubscribe = onSnapshot(
       q,
-      (querySnapshot) => {
-        try {
-          // Clear the timeout since we received a response
-          clearTimeout(timeoutId);
+      { includeMetadataChanges: true }, // Include metadata changes to get faster updates
+      async (snapshot) => {
+        // Clear the timeout as we got a response
+        clearTimeout(timeoutId);
 
-          // If snapshot exists but is empty, that's a valid state (no conversations)
-          if (querySnapshot.empty) {
-            // Only log this once to avoid console spam
-            if (isFirstCallback) {
-              console.log(
-                `No conversations found for user: ${userId} (listener ${listenerId})`
-              );
-              isFirstCallback = false;
-            }
-            callback([]);
-            return;
-          }
-
-          // After first callback, stop logging
+        // Handle empty results
+        if (snapshot.empty && isFirstCallback) {
+          console.log(
+            `No conversations found in listener ${listenerId} for user: ${userId}`
+          );
+          callback([]);
           isFirstCallback = false;
+          return;
+        }
 
-          const conversations = querySnapshot.docs.map((doc) => {
-            const data = doc.data() as ConversationFirestore;
-            return {
-              id: doc.id,
-              ...data,
-              createdAt: data.createdAt
-                ? data.createdAt.toString()
-                : new Date().toISOString(),
-              updatedAt: data.updatedAt
-                ? data.updatedAt.toString()
-                : new Date().toISOString(),
-            };
+        try {
+          // Check if this is a local change (faster updates)
+          const source = snapshot.metadata.hasPendingWrites
+            ? 'Local'
+            : 'Server';
+          console.log(
+            `Conversations update source (${listenerId}): ${source} - ${snapshot.docs.length} conversations`
+          );
+
+          // Get all conversation IDs
+          const conversationIds = snapshot.docs.map(
+            (doc) => doc.data().conversationId
+          );
+
+          // Fetch all conversation documents
+          const conversations: Conversation[] = [];
+
+          // Track promises for all conversation fetches
+          const fetchPromises = conversationIds.map(async (conversationId) => {
+            try {
+              // Get the conversation document
+              const conversationDoc = await getDoc(
+                doc(db, 'conversations', conversationId)
+              );
+
+              if (conversationDoc.exists()) {
+                const data = conversationDoc.data() as ConversationFirestore;
+
+                // If we need to ensure real-time updates for lastMessage
+                // Get the most recent message manually
+                let lastMessage = data.lastMessage;
+
+                try {
+                  // Get the most recent message from the messages subcollection
+                  const recentMessagesQuery = query(
+                    collection(db, 'conversations', conversationId, 'messages'),
+                    orderBy('timestamp', 'desc'),
+                    limit(1)
+                  );
+
+                  const recentMessagesSnapshot = await getDocs(
+                    recentMessagesQuery
+                  );
+
+                  if (!recentMessagesSnapshot.empty) {
+                    const mostRecentMessage =
+                      recentMessagesSnapshot.docs[0].data();
+
+                    // Format timestamp for lastMessage
+                    let timestamp: Date | string;
+                    if (
+                      mostRecentMessage.timestamp &&
+                      typeof mostRecentMessage.timestamp.toDate === 'function'
+                    ) {
+                      timestamp = mostRecentMessage.timestamp.toDate();
+                    } else {
+                      timestamp = new Date();
+                    }
+
+                    // Update the lastMessage with the most recent one from subcollection
+                    lastMessage = {
+                      content: mostRecentMessage.content,
+                      sender: mostRecentMessage.sender,
+                      timestamp,
+                    };
+                  }
+                } catch (err) {
+                  console.error(
+                    `Error fetching recent messages for conversation ${conversationId}:`,
+                    err
+                  );
+                  // Keep using the lastMessage from the conversation document
+                }
+
+                conversations.push({
+                  id: conversationDoc.id,
+                  participants: data.participants,
+                  lastMessage: lastMessage || undefined,
+                  createdAt: data.createdAt
+                    ? data.createdAt.toString()
+                    : new Date().toISOString(),
+                  updatedAt: data.updatedAt
+                    ? data.updatedAt.toString()
+                    : new Date().toISOString(),
+                  isAIChat: data.isAIChat || false,
+                });
+              }
+            } catch (err) {
+              console.error(
+                `Error fetching conversation ${conversationId}:`,
+                err
+              );
+            }
           });
 
+          // Wait for all conversation fetches to complete
+          await Promise.all(fetchPromises);
+
+          // Sort by updatedAt
+          conversations.sort((a, b) => {
+            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return bTime - aTime;
+          });
+
+          console.log(
+            `Listener ${listenerId} update: ${conversations.length} conversations`
+          );
           callback(conversations);
+          isFirstCallback = false;
         } catch (error) {
           console.error(
-            `Error processing conversation data (listener ${listenerId}):`,
+            `Error in conversations listener ${listenerId}:`,
             error
           );
-          callback([]); // Ensure callback is always called
+          if (isFirstCallback) {
+            callback([]);
+            isFirstCallback = false;
+          }
         }
       },
       (error) => {
@@ -407,7 +530,7 @@ export const onUserConversationsUpdate = (
           (error.code === 'permission-denied' || error.code === 'not-found')
         ) {
           console.log(
-            `Firebase collection may not exist yet for listener ${listenerId}, returning empty array`
+            `Firebase conversations collection may not exist yet for listener ${listenerId}, returning empty array`
           );
           callback([]);
           return;
@@ -419,23 +542,141 @@ export const onUserConversationsUpdate = (
       }
     );
 
-    // Return a function that both clears the timeout and unsubscribes
+    // Return unsubscribe function
     return () => {
-      console.log(`Cleaning up Firebase conversations listener ${listenerId}`);
       clearTimeout(timeoutId);
+      console.log(`Removing Firebase conversations listener ${listenerId}`);
       unsubscribe();
     };
   } catch (error) {
+    // Handle errors in setting up the listener
     console.error(
       `Error setting up conversations listener ${listenerId}:`,
       error
     );
+    clearTimeout(timeoutId);
     callback([]);
-    return () => {
-      console.log(
-        `Cleaning up stub Firebase conversations listener ${listenerId} (after error)`
+    return () => {}; // Return empty cleanup function
+  }
+};
+
+// Add a function to migrate existing data to new structure
+export const migrateToNewStructure = async (
+  currentUserId: string
+): Promise<void> => {
+  try {
+    console.log('Starting migration to new data structure...');
+    const batch = writeBatch(db);
+
+    // Get all conversations for this user
+    const oldQuery = query(
+      collection(db, 'conversations'),
+      where('participants', 'array-contains', currentUserId)
+    );
+
+    const querySnapshot = await getDocs(oldQuery);
+
+    if (querySnapshot.empty) {
+      console.log('No conversations to migrate');
+      return;
+    }
+
+    console.log(`Found ${querySnapshot.docs.length} conversations to migrate`);
+
+    // For each conversation, create userConversation records
+    for (const conversationDoc of querySnapshot.docs) {
+      const conversation = conversationDoc.data() as ConversationFirestore;
+      const conversationId = conversationDoc.id;
+
+      // For each participant, create a userConversation document
+      for (const userId of conversation.participants) {
+        // Skip AI assistant
+        if (userId === 'ai-assistant') continue;
+
+        // Find other participant
+        const otherParticipantIds = conversation.participants.filter(
+          (id) => id !== userId
+        );
+        const otherParticipantId =
+          otherParticipantIds.length > 0
+            ? otherParticipantIds[0]
+            : conversation.isAIChat
+            ? 'ai-assistant'
+            : '';
+
+        // Create userConversation record
+        const userConversationRef = doc(
+          db,
+          'userConversations',
+          `${userId}_${conversationId}`
+        );
+        batch.set(userConversationRef, {
+          userId,
+          conversationId,
+          otherParticipantId,
+          lastReadTimestamp: conversation.updatedAt || serverTimestamp(),
+        });
+      }
+    }
+
+    // Commit the batch
+    await batch.commit();
+    console.log('Migration completed successfully');
+  } catch (error) {
+    console.error('Error during migration:', error);
+    throw error;
+  }
+};
+
+// Delete all data for testing purposes
+export const deleteAllUserData = async (
+  currentUserId: string
+): Promise<void> => {
+  try {
+    console.log('Starting deletion of all user data...');
+
+    // Get all userConversations for this user
+    const userConversationsQuery = query(
+      collection(db, 'userConversations'),
+      where('userId', '==', currentUserId)
+    );
+
+    const userConversationsSnapshot = await getDocs(userConversationsQuery);
+
+    // Delete each userConversation and related conversation
+    const batch = writeBatch(db);
+    const conversationIds = new Set<string>();
+
+    userConversationsSnapshot.forEach((doc) => {
+      // Delete userConversation
+      batch.delete(doc.ref);
+
+      // Track conversationId for later deletion
+      const data = doc.data();
+      conversationIds.add(data.conversationId);
+    });
+
+    // Delete all conversations
+    for (const conversationId of conversationIds) {
+      batch.delete(doc(db, 'conversations', conversationId));
+
+      // Delete all messages in the conversation
+      const messagesQuery = query(
+        collection(db, `conversations/${conversationId}/messages`)
       );
-    }; // Return empty cleanup function
+      const messagesSnapshot = await getDocs(messagesQuery);
+
+      messagesSnapshot.forEach((messageDoc) => {
+        batch.delete(messageDoc.ref);
+      });
+    }
+
+    // Commit the batch
+    await batch.commit();
+    console.log('All user data deleted successfully');
+  } catch (error) {
+    console.error('Error deleting user data:', error);
+    throw error;
   }
 };
 
@@ -462,7 +703,14 @@ export const sendMessage = async (
       messageData
     );
 
-    // Update the last message in the conversation
+    // Create the actual message object to return with a Date rather than FieldValue
+    const messageToReturn: Message = {
+      id: docRef.id,
+      ...messageData,
+      timestamp: new Date(),
+    };
+
+    // Update the last message in the conversation with more detailed information
     await updateDoc(doc(db, 'conversations', conversationId), {
       lastMessage: {
         content,
@@ -472,11 +720,63 @@ export const sendMessage = async (
       updatedAt: serverTimestamp(),
     });
 
-    return {
-      id: docRef.id,
-      ...messageData,
-      timestamp: new Date(),
-    };
+    // Get the conversation participants to update both users' references
+    try {
+      const conversationRef = doc(db, 'conversations', conversationId);
+      const conversationSnap = await getDoc(conversationRef);
+
+      if (conversationSnap.exists()) {
+        const conversationData = conversationSnap.data();
+        const participants = conversationData.participants || [];
+
+        // Create a batch to update both users' userConversations
+        const batch = writeBatch(db);
+
+        // Update lastReadTimestamp for sender (they've obviously read their own message)
+        const senderConversationRef = doc(
+          db,
+          'userConversations',
+          `${sender}_${conversationId}`
+        );
+
+        batch.update(senderConversationRef, {
+          lastReadTimestamp: serverTimestamp(),
+        });
+
+        // Force an update to ALL participants' userConversation docs to ensure
+        // the sidebar will refresh for all users
+        for (const participantId of participants) {
+          // Skip if this is the sender (already updated above)
+          if (participantId === sender) continue;
+
+          // Skip AI assistant
+          if (participantId === 'ai-assistant') continue;
+
+          // Create a reference to this participant's userConversation document
+          const userConversationRef = doc(
+            db,
+            'userConversations',
+            `${participantId}_${conversationId}`
+          );
+
+          // Touch the document to trigger updates (updatedAt will trigger listeners)
+          batch.update(userConversationRef, {
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        // Commit all the updates
+        await batch.commit();
+      }
+    } catch (err) {
+      // Just log the error but don't fail the whole operation
+      console.error(
+        `Error updating userConversations for conversation ${conversationId}:`,
+        err
+      );
+    }
+
+    return messageToReturn;
   } catch (error) {
     console.error('Error sending message:', error);
     throw error;
