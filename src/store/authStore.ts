@@ -8,6 +8,7 @@ import {
   onAuthStateChange,
 } from '@/lib/firebase/auth';
 import { User, AuthState } from '@/types';
+import { handleError, ErrorCategories } from '@/lib/services/errorService';
 
 interface AuthStore extends AuthState {
   // Auth actions
@@ -54,10 +55,13 @@ export const useAuthStore = create<AuthStore>()(
 
         return user;
       } catch (error) {
-        const errorMessage = (error as Error).message || 'Failed to login';
+        // Use the error handler to process the error
+        const appError = handleError(error, ErrorCategories.AUTH, {
+          context: { email, action: 'loginWithEmail' },
+        });
 
         set((state) => {
-          state.error = errorMessage;
+          state.error = appError.message;
           state.loading = false;
         });
 
@@ -81,11 +85,13 @@ export const useAuthStore = create<AuthStore>()(
 
         return user;
       } catch (error) {
-        const errorMessage =
-          (error as Error).message || 'Failed to login with Google';
+        // Use the error handler to process the error
+        const appError = handleError(error, ErrorCategories.AUTH, {
+          context: { provider: 'Google', action: 'loginWithGoogle' },
+        });
 
         set((state) => {
-          state.error = errorMessage;
+          state.error = appError.message;
           state.loading = false;
         });
 
@@ -117,10 +123,13 @@ export const useAuthStore = create<AuthStore>()(
 
         return user;
       } catch (error) {
-        const errorMessage = (error as Error).message || 'Failed to register';
+        // Use the error handler to process the error
+        const appError = handleError(error, ErrorCategories.AUTH, {
+          context: { email, displayName, action: 'registerWithEmail' },
+        });
 
         set((state) => {
-          state.error = errorMessage;
+          state.error = appError.message;
           state.loading = false;
         });
 
@@ -142,10 +151,13 @@ export const useAuthStore = create<AuthStore>()(
           state.loading = false;
         });
       } catch (error) {
-        const errorMessage = (error as Error).message || 'Failed to logout';
+        // Use the error handler to process the error
+        const appError = handleError(error, ErrorCategories.AUTH, {
+          context: { action: 'logout' },
+        });
 
         set((state) => {
-          state.error = errorMessage;
+          state.error = appError.message;
           state.loading = false;
         });
 
