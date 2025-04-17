@@ -61,58 +61,84 @@ export const createOrGetConversation = async (
     const conversationRef = doc(db, 'conversations', conversationId);
     const conversationSnap = await getDoc(conversationRef);
 
+    let isExistingConversation = false;
+    let existingData: ConversationFirestore | null = null;
+
     if (conversationSnap.exists()) {
-      // Return existing conversation
-      const data = conversationSnap.data() as ConversationFirestore;
-      return {
-        id: conversationId,
-        participants: data.participants,
-        lastMessage: data.lastMessage || undefined,
-        createdAt: data.createdAt
-          ? data.createdAt.toString()
-          : new Date().toISOString(),
-        updatedAt: data.updatedAt
-          ? data.updatedAt.toString()
-          : new Date().toISOString(),
-        isAIChat: data.isAIChat || false,
-      };
+      isExistingConversation = true;
+      existingData = conversationSnap.data() as ConversationFirestore;
+      // Continue with the function to create userConversation records if needed
     }
 
-    // Create new conversation with deterministic ID
+    // Create new conversation or update existing one with deterministic ID
     const conversationData: ConversationFirestore = {
       participants: sortedParticipants,
-      createdAt: serverTimestamp(),
+      createdAt:
+        isExistingConversation && existingData?.createdAt
+          ? existingData.createdAt
+          : serverTimestamp(),
       updatedAt: serverTimestamp(),
       isAIChat,
     };
 
-    await setDoc(conversationRef, conversationData);
+    // If the lastMessage field exists in the existing conversation, preserve it
+    if (isExistingConversation && existingData?.lastMessage) {
+      conversationData.lastMessage = existingData.lastMessage;
+    }
 
-    // Create userConversation records for each participant
+    // Set or update the conversation document
+    await setDoc(conversationRef, conversationData, { merge: true });
+
+    // Check for existing userConversation records and create them if missing
     for (const userId of sortedParticipants) {
+      // Skip creating userConversation for AI assistant
+      if (userId === 'ai-assistant') continue;
+
       const otherParticipantId = sortedParticipants.find((id) => id !== userId);
 
-      // Skip creating userConversation for AI chats if the other participant is AI
-      if (isAIChat && otherParticipantId === 'ai-assistant') continue;
-
+      // Check if userConversation record exists
+      const userConversationId = `${userId}_${conversationId}`;
       const userConversationRef = doc(
         db,
         'userConversations',
-        `${userId}_${conversationId}`
+        userConversationId
       );
-      await setDoc(userConversationRef, {
-        userId,
-        conversationId,
-        otherParticipantId:
-          otherParticipantId || (isAIChat ? 'ai-assistant' : ''),
-        lastReadTimestamp: serverTimestamp(),
-      });
+      const userConversationSnap = await getDoc(userConversationRef);
+
+      // If userConversation doesn't exist, create it
+      if (!userConversationSnap.exists()) {
+        console.log(
+          `Creating missing userConversation record: ${userConversationId}`
+        );
+        await setDoc(userConversationRef, {
+          userId,
+          conversationId,
+          otherParticipantId:
+            otherParticipantId || (isAIChat ? 'ai-assistant' : ''),
+          lastReadTimestamp: serverTimestamp(),
+        });
+      } else {
+        // Update the lastReadTimestamp and ensure otherParticipantId is set correctly
+        await updateDoc(userConversationRef, {
+          updatedAt: serverTimestamp(),
+          otherParticipantId:
+            otherParticipantId || (isAIChat ? 'ai-assistant' : ''),
+        });
+      }
     }
 
+    // Return the conversation object
     return {
       id: conversationId,
       participants: sortedParticipants,
-      createdAt: new Date().toISOString(),
+      lastMessage:
+        isExistingConversation && existingData?.lastMessage
+          ? existingData.lastMessage
+          : undefined,
+      createdAt:
+        isExistingConversation && existingData?.createdAt
+          ? existingData.createdAt.toString()
+          : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isAIChat,
     };
