@@ -6,8 +6,9 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Eye, EyeOff, Mail, Lock, User, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
 import { useAuth } from '@/hooks';
+import { useErrorHandler, ErrorCategories } from '@/hooks/useErrorHandler';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,7 +19,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 
 // Form validation schema
 const registerSchema = z
@@ -39,11 +40,17 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export function RegisterForm() {
   const router = useRouter();
-  const { registerWithEmail, loginWithGoogle, error } = useAuth();
+  const { registerWithEmail, loginWithGoogle, error: authError } = useAuth();
+  const {
+    localError,
+    clearLocalError,
+    handleLocalError,
+    createLocalErrorWrapper,
+  } = useErrorHandler();
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   // React Hook Form
   const form = useForm<RegisterFormValues>({
@@ -60,36 +67,45 @@ export function RegisterForm() {
   const onSubmit = async (data: RegisterFormValues) => {
     try {
       setIsSubmitting(true);
-      setFormError(null);
+      clearLocalError();
 
       await registerWithEmail(data.email, data.password, data.name);
       router.push('/chat');
     } catch (error) {
-      console.error('Registration error:', error);
-      setFormError(
-        (error as Error).message || 'Failed to register. Please try again.'
-      );
+      // Use our local error handler from the hook
+      handleLocalError(error, ErrorCategories.AUTH, {
+        context: {
+          email: data.email,
+          action: 'register-form-submit',
+        },
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Handle Google login/signup
-  const handleGoogleLogin = async () => {
-    try {
+  // Handle Google login/signup wrapped with error handling
+  const handleGoogleLogin = createLocalErrorWrapper(
+    async () => {
       setIsSubmitting(true);
-      setFormError(null);
+      try {
+        await loginWithGoogle();
+        router.push('/chat');
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    ErrorCategories.AUTH,
+    { context: { provider: 'Google', action: 'register-google' } }
+  );
 
-      await loginWithGoogle();
-      router.push('/chat');
-    } catch (error) {
-      console.error('Google login error:', error);
-      setFormError(
-        (error as Error).message ||
-          'Failed to login with Google. Please try again.'
-      );
-    } finally {
-      setIsSubmitting(false);
+  // Display the most relevant error
+  const displayError = localError || authError;
+
+  // Clear error when form changes
+  const handleFormChange = () => {
+    if (localError) {
+      clearLocalError();
     }
   };
 
@@ -102,15 +118,17 @@ export function RegisterForm() {
         </p>
       </div>
 
-      {(formError || error) && (
-        <Alert variant='destructive'>
-          <AlertCircle className='h-4 w-4' />
-          <AlertDescription>{formError || error}</AlertDescription>
-        </Alert>
+      {/* Display any error that occurred */}
+      {displayError && (
+        <ErrorDisplay message={displayError} onDismiss={clearLocalError} />
       )}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='space-y-4'
+          onChange={handleFormChange}
+        >
           <FormField
             control={form.control}
             name='name'
