@@ -1,61 +1,16 @@
 import React from 'react';
-import {
-  render,
-  screen,
-  fireEvent,
-  waitFor,
-  act,
-} from '@testing-library/react';
+import { fireEvent, waitFor, act, render, screen } from '@/test-utils';
 import '@testing-library/jest-dom';
-import { LoginForm } from '../login/LoginForm';
-import * as hooks from '@/hooks';
-import * as navigation from 'next/navigation';
-
-// Mock next/navigation
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(),
-}));
-
-// Mock the useAuth hook
-jest.mock('@/hooks', () => ({
-  useAuth: jest.fn(),
-  useErrorHandler: jest.fn().mockReturnValue({
-    localError: null,
-    clearLocalError: jest.fn(),
-    handleLocalError: jest.fn(),
-  }),
-}));
+import { LoginForm } from './LoginForm';
+import { testUsers } from '@/test-utils/test-data';
 
 describe('LoginForm', () => {
-  // Common test setup
-  const mockRouter = {
-    push: jest.fn(),
-    back: jest.fn(),
-    forward: jest.fn(),
-    refresh: jest.fn(),
-    replace: jest.fn(),
-    prefetch: jest.fn(),
-  };
-
   const mockLoginWithEmail = jest.fn();
   const mockLoginWithGoogle = jest.fn();
+  const mockRouterPush = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Setup router mock
-    jest.mocked(navigation.useRouter).mockReturnValue(mockRouter);
-
-    // Setup auth mock with default values for happy path
-    jest.mocked(hooks.useAuth).mockReturnValue({
-      user: null,
-      loading: false,
-      error: null,
-      loginWithEmail: mockLoginWithEmail,
-      loginWithGoogle: mockLoginWithGoogle,
-      registerWithEmail: jest.fn(),
-      logout: jest.fn(),
-    });
   });
 
   test('should render the login form correctly', () => {
@@ -72,19 +27,17 @@ describe('LoginForm', () => {
   });
 
   test('should successfully login with email and password and redirect', async () => {
-    // Arrange
-    const testUser = {
-      id: 'test-user-id',
-      email: 'test@example.com',
-      displayName: 'Test User',
-      status: 'online',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    mockLoginWithEmail.mockResolvedValue(testUser);
-
-    render(<LoginForm />);
+    // Render with our custom auth and router mocks
+    render(<LoginForm />, {
+      authValues: {
+        loginWithEmail: mockLoginWithEmail.mockResolvedValue(
+          testUsers.standard
+        ),
+      },
+      routerValues: {
+        push: mockRouterPush,
+      },
+    });
 
     // Act - Fill in the form
     const emailInput = screen.getByPlaceholderText('name@example.com');
@@ -107,22 +60,35 @@ describe('LoginForm', () => {
         'ValidPass123!'
       );
       // Verify navigation occurred
-      expect(mockRouter.push).toHaveBeenCalledWith('/chat');
+      expect(mockRouterPush).toHaveBeenCalledWith('/chat');
     });
   });
 
-  test('should call loginWithEmail when form is submitted', async () => {
-    // This test just focuses on verifying the function is called without waiting for loading states
-    mockLoginWithEmail.mockResolvedValue({
-      id: 'test-id',
-      email: 'test@example.com',
-      displayName: 'Test User',
-      status: 'online',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
+  test('should show loading state during login submission', async () => {
+    // Create a delayed mock implementation
+    const delayedMockLogin = jest.fn().mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                id: '1',
+                email: 'test@example.com',
+                displayName: 'Test User',
+                status: 'online',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }),
+            100
+          )
+        )
+    );
 
-    render(<LoginForm />);
+    render(<LoginForm />, {
+      authValues: {
+        loginWithEmail: delayedMockLogin,
+      },
+    });
 
     // Act - Fill in the form and submit
     const emailInput = screen.getByPlaceholderText('name@example.com');
@@ -136,29 +102,29 @@ describe('LoginForm', () => {
       fireEvent.click(submitButton);
     });
 
-    // Assert
-    expect(mockLoginWithEmail).toHaveBeenCalledWith(
-      'test@example.com',
-      'ValidPass123!'
-    );
+    // Assert - Button should be disabled during loading
+    expect(submitButton).toBeDisabled();
+
+    // Wait for login to complete
+    await waitFor(() => {
+      expect(delayedMockLogin).toHaveBeenCalled();
+    });
   });
 
   test('should successfully login with Google and redirect', async () => {
-    // Arrange
-    const testUser = {
-      id: 'google-user-id',
-      email: 'google@example.com',
-      displayName: 'Google User',
-      status: 'online',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    // Render with our custom auth and router mocks
+    render(<LoginForm />, {
+      authValues: {
+        loginWithGoogle: mockLoginWithGoogle.mockResolvedValue(
+          testUsers.google
+        ),
+      },
+      routerValues: {
+        push: mockRouterPush,
+      },
+    });
 
-    mockLoginWithGoogle.mockResolvedValue(testUser);
-
-    render(<LoginForm />);
-
-    // Act
+    // Act - Find and click the Google button
     const googleButton = screen.getByRole('button', {
       name: /continue with google/i,
     });
@@ -170,7 +136,7 @@ describe('LoginForm', () => {
     // Assert
     await waitFor(() => {
       expect(mockLoginWithGoogle).toHaveBeenCalled();
-      expect(mockRouter.push).toHaveBeenCalledWith('/chat');
+      expect(mockRouterPush).toHaveBeenCalledWith('/chat');
     });
   });
 });
