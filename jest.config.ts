@@ -8,16 +8,16 @@ const createJestConfig = nextJest({
 
 // Add any custom config to be passed to Jest
 const config: Config = {
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  coverageProvider: 'v8',
   testEnvironment: 'jsdom',
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   // Add more setup options before each test is run
-
   moduleNameMapper: {
-    // ...
-    '^@/components/(.*)$': '<rootDir>/src/$1',
+    // Handle module aliases
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
 };
 
