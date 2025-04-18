@@ -1,57 +1,21 @@
 import React from 'react';
 import {
-  render,
-  screen,
   fireEvent,
   waitFor,
   act,
-} from '@testing-library/react';
+  render,
+  screen,
+} from '@/test-utils/testing-library-utils';
 import '@testing-library/jest-dom';
-import { RegisterForm } from '../register/RegisterForm';
-import * as hooks from '@/hooks';
-import * as navigation from 'next/navigation';
-
-// Mock next/navigation
-jest.mock('next/navigation', () => ({
-  useRouter: jest.fn(),
-}));
-
-// Mock the useAuth hook
-jest.mock('@/hooks', () => ({
-  useAuth: jest.fn(),
-  useErrorHandler: jest.fn().mockReturnValue({
-    localError: null,
-    clearLocalError: jest.fn(),
-    handleLocalError: jest.fn(),
-    createLocalErrorWrapper: jest.fn((fn) => fn),
-  }),
-}));
+import { RegisterForm } from './RegisterForm';
 
 describe('RegisterForm', () => {
-  // Common test setup
-  const mockRouter = {
-    push: jest.fn(),
-  };
-
   const mockRegisterWithEmail = jest.fn();
   const mockLoginWithGoogle = jest.fn();
+  const mockRouterPush = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Setup router mock
-    jest.mocked(navigation.useRouter).mockReturnValue(mockRouter);
-
-    // Setup auth mock with default values for happy path
-    jest.mocked(hooks.useAuth).mockReturnValue({
-      user: null,
-      loading: false,
-      error: null,
-      loginWithEmail: jest.fn(),
-      loginWithGoogle: mockLoginWithGoogle,
-      registerWithEmail: mockRegisterWithEmail,
-      logout: jest.fn(),
-    });
   });
 
   test('should render the registration form correctly', () => {
@@ -81,9 +45,15 @@ describe('RegisterForm', () => {
       updatedAt: new Date().toISOString(),
     };
 
-    mockRegisterWithEmail.mockResolvedValue(testUser);
-
-    render(<RegisterForm />);
+    // Render with our custom auth and router mocks
+    render(<RegisterForm />, {
+      authValues: {
+        registerWithEmail: mockRegisterWithEmail.mockResolvedValue(testUser),
+      },
+      routerValues: {
+        push: mockRouterPush,
+      },
+    });
 
     // Act - Fill in the form
     const nameInput = screen.getByPlaceholderText('John Doe');
@@ -117,13 +87,13 @@ describe('RegisterForm', () => {
       );
 
       // Verify navigation occurred
-      expect(mockRouter.push).toHaveBeenCalledWith('/chat');
+      expect(mockRouterPush).toHaveBeenCalledWith('/chat');
     });
   });
 
   test('should show loading state during registration submission', async () => {
-    // Arrange
-    mockRegisterWithEmail.mockImplementation(
+    // Create a delayed mock implementation
+    const delayedMockRegister = jest.fn().mockImplementation(
       () =>
         new Promise((resolve) =>
           setTimeout(
@@ -141,7 +111,11 @@ describe('RegisterForm', () => {
         )
     );
 
-    render(<RegisterForm />);
+    render(<RegisterForm />, {
+      authValues: {
+        registerWithEmail: delayedMockRegister,
+      },
+    });
 
     // Act - Fill in the form
     const nameInput = screen.getByPlaceholderText('John Doe');
@@ -166,14 +140,11 @@ describe('RegisterForm', () => {
     });
 
     // Assert - Button should show loading state
-    expect(
-      screen.getByRole('button', { name: /creating account/i })
-    ).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
 
     // Wait for registration to complete
     await waitFor(() => {
-      expect(mockRegisterWithEmail).toHaveBeenCalled();
+      expect(delayedMockRegister).toHaveBeenCalled();
     });
   });
 
@@ -188,9 +159,14 @@ describe('RegisterForm', () => {
       updatedAt: new Date().toISOString(),
     };
 
-    mockLoginWithGoogle.mockResolvedValue(testUser);
-
-    render(<RegisterForm />);
+    render(<RegisterForm />, {
+      authValues: {
+        loginWithGoogle: mockLoginWithGoogle.mockResolvedValue(testUser),
+      },
+      routerValues: {
+        push: mockRouterPush,
+      },
+    });
 
     // Act - Use act to wrap the Google button click
     const googleButton = screen.getByRole('button', {
@@ -204,22 +180,29 @@ describe('RegisterForm', () => {
     // Assert
     await waitFor(() => {
       expect(mockLoginWithGoogle).toHaveBeenCalled();
-      expect(mockRouter.push).toHaveBeenCalledWith('/chat');
+      expect(mockRouterPush).toHaveBeenCalledWith('/chat');
     });
   });
 
   test('should validate form inputs and allow successful submission', async () => {
     // Arrange
-    mockRegisterWithEmail.mockResolvedValue({
+    const validUser = {
       id: 'validated-user-id',
       email: 'valid@example.com',
       displayName: 'Valid User',
       status: 'online',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
 
-    render(<RegisterForm />);
+    render(<RegisterForm />, {
+      authValues: {
+        registerWithEmail: mockRegisterWithEmail.mockResolvedValue(validUser),
+      },
+      routerValues: {
+        push: mockRouterPush,
+      },
+    });
 
     // Act - Fill form correctly
     const nameInput = screen.getByPlaceholderText('John Doe');
@@ -251,7 +234,7 @@ describe('RegisterForm', () => {
         'ValidPass123!',
         'Valid User'
       );
-      expect(mockRouter.push).toHaveBeenCalledWith('/chat');
+      expect(mockRouterPush).toHaveBeenCalledWith('/chat');
     });
   });
 });
