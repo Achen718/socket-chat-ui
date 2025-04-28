@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  fireEvent,
-  waitFor,
-  act,
-  render,
-  screen,
-} from '@/test-utils/testing-library-utils';
+import { fireEvent, waitFor, act, render, screen } from '@/test-utils/render';
 import '@testing-library/jest-dom';
 import { RegisterForm } from './RegisterForm';
 
