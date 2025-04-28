@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store';
 import { setupAuthPersistence } from '@/lib/firebase/auth';
 import { User } from '@/types';
 import { setupPresence } from '@/lib/firebase/user';
+import {
+  authListenerManager,
+  presenceManager,
+} from '@/lib/utils/resourceManager';
 
 interface UseAuthReturn {
   user: User | null;
@@ -31,70 +35,59 @@ export function useAuth(): UseAuthReturn {
   const registerWithEmail = useAuthStore((state) => state.registerWithEmail);
   const logout = useAuthStore((state) => state.logout);
 
-  // Use a ref to track if the auth listener has been initialized
-  const authListenerInitialized = useRef(false);
-  const authListenerCleanup = useRef<(() => void) | null>(null);
-  const presenceCleanup = useRef<(() => void) | null>(null);
-
   // Initialize auth listener on mount
   useEffect(() => {
-    // Only set up the listener once
-    if (authListenerInitialized.current) {
+    // Check if auth listener is already initialized
+    if (authListenerManager.has('global')) {
       console.log('🔑 Auth Hook: Auth listener already initialized, skipping');
       return;
     }
 
     console.log('🔑 Auth Hook: Setting up auth persistence and listener');
-    authListenerInitialized.current = true;
 
-    // Ensure persistence is set first
-    setupAuthPersistence().then(() => {
-      // Then initialize auth listener
+    const setupAuth = async () => {
+      await setupAuthPersistence();
+
       try {
         const unsubscribe = initAuthListener();
-        authListenerCleanup.current = unsubscribe;
+
+        // Register with manager (which returns the cleanup function)
+        return authListenerManager.register('global', () => {
+          console.log('🔑 Auth Hook: Cleaning up auth listener');
+          unsubscribe();
+        });
       } catch (error) {
         console.error('🔑 Auth Hook: Error initializing auth listener', error);
-      }
-    });
-
-    // Cleanup function
-    return () => {
-      console.log('🔑 Auth Hook: Cleaning up auth listener');
-      if (authListenerCleanup.current) {
-        authListenerCleanup.current();
-        authListenerCleanup.current = null;
-      }
-
-      // Also clean up presence
-      if (presenceCleanup.current) {
-        presenceCleanup.current();
-        presenceCleanup.current = null;
+        return () => {}; // Return empty cleanup if setup failed
       }
     };
-  }, []); // Empty dependency array - only run once on mount
+
+    setupAuth();
+
+    // Return cleanup function
+    return () => {
+      authListenerManager.remove('global');
+    };
+  }, []);
 
   // Set up presence tracking when user changes
   useEffect(() => {
-    // Clean up previous presence tracking
-    if (presenceCleanup.current) {
-      presenceCleanup.current();
-      presenceCleanup.current = null;
-    }
+    // Skip if no user
+    if (!user?.id) return;
 
-    // Set up new presence tracking if user is logged in
-    if (user?.id) {
-      console.log('👤 Auth Hook: Setting up presence tracking for', user.id);
-      presenceCleanup.current = setupPresence(user.id);
-    }
+    console.log('👤 Auth Hook: Setting up presence tracking for', user.id);
 
+    // Actually call setupPresence and register the cleanup function
+    const cleanup = setupPresence(user.id);
+    presenceManager.register(user.id, cleanup);
+
+    // Return cleanup function to run when effect is cleaned up
     return () => {
-      if (presenceCleanup.current) {
-        presenceCleanup.current();
-        presenceCleanup.current = null;
+      if (user?.id) {
+        presenceManager.remove(user.id);
       }
     };
-  }, [user?.id]); // Re-run when user ID changes
+  }, [user?.id]);
 
   // Handle redirects based on auth state
   useEffect(() => {
