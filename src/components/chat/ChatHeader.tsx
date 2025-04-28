@@ -13,13 +13,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useEffect, useState } from 'react';
-import { getUserById, formatUserDisplayName } from '@/lib/firebase/user';
+import {
+  getUserById,
+  formatUserDisplayName,
+  subscribeToUserStatus,
+} from '@/lib/firebase/user';
 import { User } from '@/types';
 
 export function ChatHeader() {
   const { activeConversation } = useChat();
   const { user } = useAuth();
   const [otherUser, setOtherUser] = useState<User | null>(null);
+  const [otherUserStatus, setOtherUserStatus] = useState<string>('offline');
 
   // Find the other participant in the conversation
   const otherParticipantId = activeConversation?.participants.find(
@@ -31,7 +36,9 @@ export function ChatHeader() {
 
   // Fetch other user's details when otherParticipantId changes
   useEffect(() => {
+    console.log('Dependencies changed:', { otherParticipantId, isAIChat });
     let isMounted = true;
+    let statusUnsubscribe: (() => void) | undefined;
 
     const fetchUserDetails = async () => {
       if (!otherParticipantId || isAIChat) return;
@@ -40,6 +47,19 @@ export function ChatHeader() {
         const userData = await getUserById(otherParticipantId);
         if (isMounted) {
           setOtherUser(userData);
+          // Initial status
+          setOtherUserStatus(userData?.status || 'offline');
+
+          // Set up real-time status listener
+          statusUnsubscribe = subscribeToUserStatus(
+            otherParticipantId,
+            (status) => {
+              if (isMounted) {
+                console.log(`Status updated: ${status}`);
+                setOtherUserStatus(status);
+              }
+            }
+          );
         }
       } catch (error) {
         console.error('Error fetching user details:', error);
@@ -50,6 +70,7 @@ export function ChatHeader() {
 
     return () => {
       isMounted = false;
+      if (statusUnsubscribe) statusUnsubscribe();
     };
   }, [otherParticipantId, isAIChat]);
 
@@ -89,7 +110,7 @@ export function ChatHeader() {
           <div className='text-xs text-muted-foreground'>
             {isAIChat
               ? 'AI Powered Assistant'
-              : otherUser?.status || 'Loading...'}
+              : otherUserStatus || 'Loading...'}
           </div>
         </div>
       </div>
