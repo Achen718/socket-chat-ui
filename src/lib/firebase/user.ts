@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { User } from '@/types';
+import { presenceManager } from '@/lib/utils/resourceManager';
 
 // Initialize cache from localStorage if available
 const initializeCache = (): Map<
@@ -236,9 +237,8 @@ export const setupPresence = (userId: string, inactivityTimeout = 10000) => {
   if (typeof window === 'undefined') return () => {};
 
   // Singleton pattern: prevent multiple presence instances for same user
-  if (presenceCleanupFunctions.has(userId)) {
-    console.log(`Presence already active for user ${userId}, reusing instance`);
-    return presenceCleanupFunctions.get(userId)!;
+  if (presenceManager.has(userId)) {
+    return presenceManager.get(userId)!;
   }
 
   console.log(`Setting up presence for user ${userId}`);
@@ -249,53 +249,72 @@ export const setupPresence = (userId: string, inactivityTimeout = 10000) => {
 
   // State tracking
   let isActive = true;
+  let currentStatus = 'online'; // Track current status to avoid redundant updates
   let activityTimeout: NodeJS.Timeout | null = null;
   let heartbeatInterval: NodeJS.Timeout | null = null;
+  let isProcessingUpdate = false; // Flag to prevent concurrent updates
 
   // Update presence in Firestore
   let lastUpdateTime = 0;
   const updatePresence = async (status: 'online' | 'away' | 'offline') => {
     const now = Date.now();
 
-    // Allow immediate updates for offline status or if sufficient time has passed
-    if (status === 'offline' || now - lastUpdateTime > 2000) {
-      console.log(`Updating presence to ${status} for ${userId}`);
-      lastUpdateTime = now;
+    // Skip if same status (except offline) and not enough time has passed
+    if (
+      status === currentStatus &&
+      status !== 'offline' &&
+      now - lastUpdateTime < 2000
+    ) {
+      console.log(`Skipping redundant status update (${status}) for ${userId}`);
+      return;
+    }
 
-      try {
-        const batch = writeBatch(db);
-        const timestamp = new Date();
+    // Skip if another update is in progress, unless this is an offline update
+    if (isProcessingUpdate && status !== 'offline') {
+      console.log(`Update already in progress, skipping ${status} update`);
+      return;
+    }
 
-        // Update in userStatus collection
-        batch.set(
-          userStatusRef,
-          {
-            state: status,
-            lastSeen: serverTimestamp(),
-            lastSeenClient: timestamp.toISOString(),
-          },
-          { merge: true }
-        );
+    console.log(`Updating presence to ${status} for ${userId}`);
+    lastUpdateTime = now;
+    isProcessingUpdate = true;
+    currentStatus = status; // Update tracked status
 
-        // Update in users collection
-        batch.update(userDocRef, {
-          status: status,
+    try {
+      const batch = writeBatch(db);
+      const timestamp = new Date();
+
+      // Update in userStatus collection
+      batch.set(
+        userStatusRef,
+        {
+          state: status,
           lastSeen: serverTimestamp(),
-        });
+          lastSeenClient: timestamp.toISOString(),
+        },
+        { merge: true }
+      );
 
-        await batch.commit();
+      // Update in users collection
+      batch.update(userDocRef, {
+        status: status,
+        lastSeen: serverTimestamp(),
+      });
 
-        // Store last status in localStorage for tab sync
-        localStorage.setItem(
-          `presence_${userId}`,
-          JSON.stringify({
-            status,
-            timestamp: now,
-          })
-        );
-      } catch (error) {
-        console.error('Error updating presence:', error);
-      }
+      await batch.commit();
+
+      // Store last status in localStorage for tab sync
+      localStorage.setItem(
+        `presence_${userId}`,
+        JSON.stringify({
+          status,
+          timestamp: now,
+        })
+      );
+    } catch (error) {
+      console.error('Error updating presence:', error);
+    } finally {
+      isProcessingUpdate = false;
     }
   };
 
@@ -399,43 +418,131 @@ export const setupPresence = (userId: string, inactivityTimeout = 10000) => {
   // Return cleanup function
   presenceCleanupFunctions.set(userId, cleanup);
 
-  return cleanup;
+  return presenceManager.register(userId, cleanup);
 };
 
+// Track callbacks per user ID
+const activeStatusSubscriptions = new Map<
+  string,
+  Set<(status: string) => void>
+>();
+
+// Track actual Firestore listeners
+const activeStatusListeners = new Map<string, () => void>();
+
 /**
- * Subscribe to user status changes
+ * Subscribe to user status changes with improved efficiency
+ * Only creates one Firestore listener per user ID regardless of how many components subscribe
  */
 export const subscribeToUserStatus = (
   userId: string,
-  callback: (status: string) => void
+  callback: (status: string) => void,
+  componentId?: string // Optional identifier for debugging
 ) => {
   if (typeof window === 'undefined') return () => {};
 
-  // Create reference to the user's status document
-  const userStatusRef = doc(db, 'userStatus', userId);
+  const debugPrefix = componentId ? `[${componentId}]` : '';
+  console.log(`${debugPrefix} Setting up status subscription for ${userId}`);
 
-  // Set up real-time listener
-  const unsubscribe = onSnapshot(userStatusRef, (doc) => {
-    if (doc.exists()) {
-      const data = doc.data();
-      const status = data.state || 'offline';
+  // Return cached status immediately if available
+  const cachedUser = userCache.get(userId)?.user;
+  if (cachedUser?.status) {
+    console.log(`${debugPrefix} Returning cached status: ${cachedUser.status}`);
+    setTimeout(() => callback(cachedUser.status), 0);
+  }
 
-      // Update local cache
-      const cachedUser = userCache.get(userId)?.user;
-      if (cachedUser) {
-        userCache.set(userId, {
-          user: { ...cachedUser, status },
-          timestamp: Date.now(),
-        });
-        saveCache();
+  // Create subscriber set if it doesn't exist
+  if (!activeStatusSubscriptions.has(userId)) {
+    activeStatusSubscriptions.set(userId, new Set());
+  }
+
+  // Add this callback to subscribers
+  activeStatusSubscriptions.get(userId)!.add(callback);
+
+  // Set up Firestore listener if not already listening for this user
+  if (!activeStatusListeners.has(userId)) {
+    console.log(`${debugPrefix} Creating new Firestore listener for ${userId}`);
+
+    const userStatusRef = doc(db, 'userStatus', userId);
+
+    // Create the listener
+    const unsubscribe = onSnapshot(
+      userStatusRef,
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          const status = data.state || 'offline';
+          console.log(`Status update for ${userId}: ${status}`);
+
+          // Update local cache
+          const cachedUser = userCache.get(userId)?.user;
+          if (cachedUser) {
+            userCache.set(userId, {
+              user: { ...cachedUser, status },
+              timestamp: Date.now(),
+            });
+            saveCache();
+          }
+
+          // Notify all subscribers
+          const subscribers = activeStatusSubscriptions.get(userId);
+          if (subscribers) {
+            subscribers.forEach((cb) => {
+              try {
+                cb(status);
+              } catch (err) {
+                console.error('Error in status subscriber callback:', err);
+              }
+            });
+          }
+        } else {
+          console.log(
+            `No status document for ${userId}, defaulting to offline`
+          );
+          const subscribers = activeStatusSubscriptions.get(userId);
+          if (subscribers) {
+            subscribers.forEach((cb) => cb('offline'));
+          }
+        }
+      },
+      (error) => {
+        console.error(`Error in status listener for ${userId}:`, error);
+        const subscribers = activeStatusSubscriptions.get(userId);
+        if (subscribers) {
+          subscribers.forEach((cb) => cb('offline'));
+        }
       }
+    );
 
-      // Call the callback with the status
-      callback(status);
-    } else {
-      callback('offline');
+    // Store unsubscribe function
+    activeStatusListeners.set(userId, unsubscribe);
+  } else {
+    console.log(
+      `${debugPrefix} Reusing existing Firestore listener for ${userId}`
+    );
+  }
+
+  // Return function to unsubscribe this specific callback
+  return () => {
+    console.log(`${debugPrefix} Removing status subscription for ${userId}`);
+
+    const subscribers = activeStatusSubscriptions.get(userId);
+    if (subscribers) {
+      // Remove this callback
+      subscribers.delete(callback);
+
+      // If no more subscribers for this user ID, remove the Firestore listener
+      if (subscribers.size === 0) {
+        const unsubscribe = activeStatusListeners.get(userId);
+        if (unsubscribe) {
+          console.log(
+            `Removing Firestore listener for ${userId} (no more subscribers)`
+          );
+          unsubscribe();
+          activeStatusListeners.delete(userId);
+        }
+        activeStatusSubscriptions.delete(userId);
+      }
     }
-  });
-
-  return unsubscribe;
+  };
 };
