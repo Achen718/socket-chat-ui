@@ -3,6 +3,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store';
 import { setupAuthPersistence } from '@/lib/firebase/auth';
 import { User } from '@/types';
+import { setupPresence } from '@/lib/firebase/user';
 
 interface UseAuthReturn {
   user: User | null;
@@ -33,6 +34,7 @@ export function useAuth(): UseAuthReturn {
   // Use a ref to track if the auth listener has been initialized
   const authListenerInitialized = useRef(false);
   const authListenerCleanup = useRef<(() => void) | null>(null);
+  const presenceCleanup = useRef<(() => void) | null>(null);
 
   // Initialize auth listener on mount
   useEffect(() => {
@@ -63,8 +65,36 @@ export function useAuth(): UseAuthReturn {
         authListenerCleanup.current();
         authListenerCleanup.current = null;
       }
+
+      // Also clean up presence
+      if (presenceCleanup.current) {
+        presenceCleanup.current();
+        presenceCleanup.current = null;
+      }
     };
   }, []); // Empty dependency array - only run once on mount
+
+  // Set up presence tracking when user changes
+  useEffect(() => {
+    // Clean up previous presence tracking
+    if (presenceCleanup.current) {
+      presenceCleanup.current();
+      presenceCleanup.current = null;
+    }
+
+    // Set up new presence tracking if user is logged in
+    if (user?.id) {
+      console.log('👤 Auth Hook: Setting up presence tracking for', user.id);
+      presenceCleanup.current = setupPresence(user.id);
+    }
+
+    return () => {
+      if (presenceCleanup.current) {
+        presenceCleanup.current();
+        presenceCleanup.current = null;
+      }
+    };
+  }, [user?.id]); // Re-run when user ID changes
 
   // Handle redirects based on auth state
   useEffect(() => {
