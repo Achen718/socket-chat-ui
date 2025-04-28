@@ -268,9 +268,18 @@ export const mapFirebaseUser = async (
   };
 };
 
+let authListenerActive = false;
+let authListenerCleanup: (() => void) | null = null;
 // Listen to auth state changes
 export const onAuthStateChange = (callback: (user: User | null) => void) => {
   console.log('Setting up Firebase auth state listener');
+
+  if (authListenerActive && authListenerCleanup) {
+    console.log('Auth listener already active, reusing instance');
+    return authListenerCleanup;
+  }
+
+  authListenerActive = true;
 
   // Track the last user ID to prevent duplicate updates
   let lastUserId: string | null = null;
@@ -313,7 +322,7 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
     console.error('Error setting up auth persistence:', error);
   });
 
-  return onAuthStateChanged(auth, async (firebaseUser) => {
+  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
     console.log(
       `Auth state changed: ${firebaseUser ? 'User logged in' : 'No user'}`
     );
@@ -333,4 +342,12 @@ export const onAuthStateChange = (callback: (user: User | null) => void) => {
       debouncedCallback(null);
     }
   });
+
+  authListenerCleanup = () => {
+    unsubscribe();
+    authListenerActive = false;
+    authListenerCleanup = null;
+  };
+
+  return authListenerCleanup;
 };
