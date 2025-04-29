@@ -1,5 +1,5 @@
 {
-  "name": "test-real-time-chat",
+  "name": "socket-chat-ui",
   "version": "0.1.0",
   "private": true,
   "scripts": {
