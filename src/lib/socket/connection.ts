@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { User } from '@/types';
 import { setupSocketEventHandlers } from './handlers';
-import { initializeMockSocket } from './mocks';
+import { initializeMockSocket } from './mockSocket';
 
 // Socket instance singleton
 let socket: Socket | null = null;
