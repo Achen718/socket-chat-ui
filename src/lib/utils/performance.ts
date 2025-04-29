@@ -43,8 +43,11 @@ export function endTimer(label: string, logToConsole = true): number {
  * @param label Optional custom label (defaults to function name)
  * @returns A wrapped function that logs performance
  */
-export function measured<T extends Function>(fn: T, label?: string): T {
-  return ((...args: any[]) => {
+export function measured<Args extends unknown[], Return>(
+  fn: (...args: Args) => Return,
+  label?: string
+): (...args: Args) => Return {
+  return (...args: Args) => {
     const fnName = label || fn.name || 'anonymous function';
     startTimer(fnName);
     try {
@@ -60,7 +63,7 @@ export function measured<T extends Function>(fn: T, label?: string): T {
           .catch((error) => {
             endTimer(fnName);
             throw error;
-          });
+          }) as unknown as Return;
       }
 
       endTimer(fnName);
@@ -69,5 +72,5 @@ export function measured<T extends Function>(fn: T, label?: string): T {
       endTimer(fnName);
       throw error;
     }
-  }) as unknown as T;
+  };
 }
