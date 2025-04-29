@@ -2,7 +2,7 @@
   "name": "server",
   "version": "1.0.0",
   "description": "This is a Socket.IO server implementation for the real-time chat application.",
-  "main": "index.js",
+  "main": "server.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
