@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useAuthStore } from '@/store';
-import { useSocket } from '@/hooks';
-import { ErrorLogger } from './ErrorLogger';
-import { DebugPanel } from './DebugPanel';
+import { useAuthStore, useSocketStore } from '@/store';
+import { ErrorLogger } from '@/components/shared/ErrorLogger';
+import { DebugPanel } from '@/components/shared/DebugPanel';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -12,18 +11,25 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   const initAuthListener = useAuthStore((state) => state.initAuthListener);
-
-  // Initialize the Socket hook to set up socket connection when authenticated
-  useSocket();
+  const user = useAuthStore((state) => state.user);
+  const connect = useSocketStore((state) => state.connect);
+  const disconnect = useSocketStore((state) => state.disconnect);
 
   // Initialize authentication listener on mount
   useEffect(() => {
     const unsubscribe = initAuthListener();
-
     return () => {
       unsubscribe();
     };
   }, [initAuthListener]);
+
+  useEffect(() => {
+    if (user) {
+      connect(user);
+    } else {
+      disconnect();
+    }
+  }, [user, connect, disconnect]);
 
   return (
     <>
