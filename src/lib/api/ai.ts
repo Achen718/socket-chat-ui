@@ -321,7 +321,8 @@ export const generateAIResponseServer = async (
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
             'HTTP-Referer':
-              process.env.NEXT_PUBLIC_APP_URL || 'https://chatapp.com',
+              process.env.NEXT_PUBLIC_APP_URL ||
+              'https://socket-chat-ui.netlify.app',
           },
           signal: controller.signal,
         }
