@@ -28,18 +28,24 @@ const prepareMessages = (message: string, messageHistory: Message[]) => {
   ];
 };
 
+// Add a utility function for debug logging
+const logDebug = (message: string) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(message);
+  }
+};
+
 // Generate AI response using DeepSeek R1 model via OpenRouter
 export const generateAIResponse = async (
   payload: AIRequestPayload
 ): Promise<AIResponse> => {
   const startTime = performance.now();
-  console.log(
+  logDebug(
     `Starting AI response generation for conversation: ${payload.conversationId}`
   );
 
   // Debug check for API key
   const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
-  console.log(`Debug - API key exists: ${!!apiKey}`);
   if (!apiKey) {
     console.error('Missing OpenRouter API key! Using fallback response.');
     return createFallbackResponse(
@@ -56,36 +62,10 @@ export const generateAIResponse = async (
     try {
       const { message, conversationId, messageHistory } = payload;
 
-      // Debug environment variables
-      console.log(`Debug - NODE_ENV: ${process.env.NODE_ENV}`);
-      console.log(
-        `Debug - FORCE_REAL_AI exists: ${!!process.env.FORCE_REAL_AI}`
-      );
-      console.log(`Debug - FORCE_REAL_AI value: ${process.env.FORCE_REAL_AI}`);
-
-      // TEMPORARILY BYPASS DEVELOPMENT CHECK - Always use real API
-      if (false) {
-        // Was: process.env.NODE_ENV === 'development' && !process.env.FORCE_REAL_AI
-        console.log('Using simulated AI response in development mode');
-
-        // Simulate network delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // Generate a simple response based on the message
-        const simulatedResponse = createSimulatedResponse(message);
-        return {
-          content: simulatedResponse,
-          conversationId,
-          timestamp: new Date().toISOString(),
-        };
-      }
-
-      console.log('Using REAL OpenRouter API for response generation');
-      console.log(`Preparing ${messageHistory.length} messages for AI context`);
+      logDebug(`Preparing ${messageHistory.length} messages for AI context`);
       const messages = prepareMessages(message, messageHistory);
-      console.log('Messages prepared for OpenRouter API');
 
-      console.log(
+      logDebug(
         `Sending request to OpenRouter API... (Attempt ${retries + 1}/${
           MAX_RETRIES + 1
         })`
@@ -120,14 +100,10 @@ export const generateAIResponse = async (
         // Clear the timeout since the request completed
         clearTimeout(timeoutId);
 
-        console.log('Received response from OpenRouter API');
-
         // Extract the AI's response from the API result
         const aiContent =
           response.data.choices[0]?.message?.content ||
           "Sorry, I couldn't generate a response";
-
-        console.log(`AI response generated (${aiContent.length} chars)`);
 
         const result = {
           content: aiContent,
@@ -136,7 +112,7 @@ export const generateAIResponse = async (
         };
 
         const endTime = performance.now();
-        console.log(
+        logDebug(
           `AI response generation completed in ${(endTime - startTime).toFixed(
             2
           )}ms`
@@ -193,7 +169,7 @@ export const generateAIResponse = async (
         break;
       }
 
-      console.log(`Retrying request (${retries}/${MAX_RETRIES})...`);
+      logDebug(`Retrying request (${retries}/${MAX_RETRIES})...`);
       // Exponential backoff
       await new Promise((resolve) => setTimeout(resolve, 1000 * retries));
     }
@@ -266,7 +242,7 @@ export const generateAIResponseServer = async (
 
     // Check for API key
     const apiKey = process.env.OPENROUTER_API_KEY;
-    console.log(`[Server] Debug - API key exists: ${!!apiKey}`);
+    logDebug(`[Server] Debug - API key exists: ${!!apiKey}`);
     if (!apiKey) {
       console.error('Missing OpenRouter API key in server environment!');
       return createFallbackResponse(
@@ -276,18 +252,18 @@ export const generateAIResponseServer = async (
     }
 
     // Debug environment variables
-    console.log(`[Server] Debug - NODE_ENV: ${process.env.NODE_ENV}`);
-    console.log(
+    logDebug(`[Server] Debug - NODE_ENV: ${process.env.NODE_ENV}`);
+    logDebug(
       `[Server] Debug - FORCE_REAL_AI exists: ${!!process.env.FORCE_REAL_AI}`
     );
-    console.log(
+    logDebug(
       `[Server] Debug - FORCE_REAL_AI value: ${process.env.FORCE_REAL_AI}`
     );
 
     // TEMPORARILY BYPASS DEVELOPMENT CHECK - Always use real API
     if (false) {
       // Was: process.env.NODE_ENV === 'development' && !process.env.FORCE_REAL_AI
-      console.log('[Server] Using simulated AI response in development mode');
+      logDebug('[Server] Using simulated AI response in development mode');
 
       // Simulate network delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -301,7 +277,7 @@ export const generateAIResponseServer = async (
       };
     }
 
-    console.log('[Server] Using REAL OpenRouter API for response generation');
+    logDebug('[Server] Using REAL OpenRouter API for response generation');
 
     // Set a timeout for the request
     const controller = new AbortController();
