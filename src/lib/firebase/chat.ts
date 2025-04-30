@@ -13,7 +13,9 @@ import {
   getDoc,
   setDoc,
   writeBatch,
-  limit,
+  Timestamp,
+  QuerySnapshot,
+  DocumentData,
 } from 'firebase/firestore';
 import { db } from './config';
 import { Conversation, Message } from '@/types';
@@ -393,14 +395,16 @@ export const onUserConversationsUpdate = (
 ) => {
   // Skip setting up listener if userId is not valid
   if (!userId) {
-    console.error('Invalid userId provided to onUserConversationsUpdate');
+    console.warn('[Chat] Invalid userId provided to onUserConversationsUpdate');
     callback([]);
-    return () => {}; // Return empty cleanup function
+    return () => {};
   }
 
   // Create a unique identifier for this listener for debugging
   const listenerId = `conversations-${userId}-${Date.now()}`;
-  console.log(`Setting up Firebase conversations listener ${listenerId}`);
+  console.log(
+    `[Chat] Setting up Firebase conversations listener ${listenerId}`
+  );
 
   // Add a flag to track if this is the first callback
   let isFirstCallback = true;
@@ -415,27 +419,26 @@ export const onUserConversationsUpdate = (
       where('userId', '==', userId)
     );
 
-    // Add a timeout to handle cases where Firebase might be slow or collections don't exist
-    // This ensures the UI doesn't stay in loading state indefinitely
+    // Add a timeout to handle cases where Firebase might be slow
     timeoutId = setTimeout(() => {
       console.warn(
-        `Conversations listener ${listenerId} timed out - forcing empty result`
+        `[Chat] Conversations listener ${listenerId} timed out - forcing empty result`
       );
       callback([]);
     }, 5000);
 
-    // Set up the listener
+    // Set up the listener with better error handling
     const unsubscribe = onSnapshot(
       q,
-      { includeMetadataChanges: true }, // Include metadata changes to get faster updates
-      async (snapshot) => {
+      { includeMetadataChanges: true },
+      async (snapshot: QuerySnapshot<DocumentData>) => {
         // Clear the timeout as we got a response
         clearTimeout(timeoutId);
 
         // Handle empty results
         if (snapshot.empty && isFirstCallback) {
           console.log(
-            `No conversations found in listener ${listenerId} for user: ${userId}`
+            `[Chat] No conversations found in listener ${listenerId} for user: ${userId}`
           );
           callback([]);
           isFirstCallback = false;
@@ -443,17 +446,20 @@ export const onUserConversationsUpdate = (
         }
 
         try {
+          // Performance measurement
+          const startTime = performance.now();
+
           // Check if this is a local change (faster updates)
           const source = snapshot.metadata.hasPendingWrites
             ? 'Local'
             : 'Server';
           console.log(
-            `Conversations update source (${listenerId}): ${source} - ${snapshot.docs.length} conversations`
+            `[Chat] Conversations update source (${listenerId}): ${source} - ${snapshot.docs.length} conversations`
           );
 
           // Get all conversation IDs
           const conversationIds = snapshot.docs.map(
-            (doc) => doc.data().conversationId
+            (doc) => doc.data().conversationId as string
           );
 
           // Fetch all conversation documents
@@ -462,7 +468,6 @@ export const onUserConversationsUpdate = (
           // Track promises for all conversation fetches
           const fetchPromises = conversationIds.map(async (conversationId) => {
             try {
-              // Get the conversation document
               const conversationDoc = await getDoc(
                 doc(db, 'conversations', conversationId)
               );
@@ -470,68 +475,40 @@ export const onUserConversationsUpdate = (
               if (conversationDoc.exists()) {
                 const data = conversationDoc.data() as ConversationFirestore;
 
-                // If we need to ensure real-time updates for lastMessage
-                // Get the most recent message manually
-                let lastMessage = data.lastMessage;
+                // Handle timestamps properly without 'any'
+                let createdAtStr: string;
+                let updatedAtStr: string;
 
-                try {
-                  // Get the most recent message from the messages subcollection
-                  const recentMessagesQuery = query(
-                    collection(db, 'conversations', conversationId, 'messages'),
-                    orderBy('timestamp', 'desc'),
-                    limit(1)
-                  );
+                // Handle createdAt timestamp
+                if (data.createdAt instanceof Timestamp) {
+                  createdAtStr = data.createdAt.toDate().toISOString();
+                } else if (typeof data.createdAt === 'string') {
+                  createdAtStr = data.createdAt;
+                } else {
+                  createdAtStr = new Date().toISOString();
+                }
 
-                  const recentMessagesSnapshot = await getDocs(
-                    recentMessagesQuery
-                  );
-
-                  if (!recentMessagesSnapshot.empty) {
-                    const mostRecentMessage =
-                      recentMessagesSnapshot.docs[0].data();
-
-                    // Format timestamp for lastMessage
-                    let timestamp: Date | string;
-                    if (
-                      mostRecentMessage.timestamp &&
-                      typeof mostRecentMessage.timestamp.toDate === 'function'
-                    ) {
-                      timestamp = mostRecentMessage.timestamp.toDate();
-                    } else {
-                      timestamp = new Date();
-                    }
-
-                    // Update the lastMessage with the most recent one from subcollection
-                    lastMessage = {
-                      content: mostRecentMessage.content,
-                      sender: mostRecentMessage.sender,
-                      timestamp,
-                    };
-                  }
-                } catch (err) {
-                  console.error(
-                    `Error fetching recent messages for conversation ${conversationId}:`,
-                    err
-                  );
-                  // Keep using the lastMessage from the conversation document
+                // Handle updatedAt timestamp
+                if (data.updatedAt instanceof Timestamp) {
+                  updatedAtStr = data.updatedAt.toDate().toISOString();
+                } else if (typeof data.updatedAt === 'string') {
+                  updatedAtStr = data.updatedAt;
+                } else {
+                  updatedAtStr = new Date().toISOString();
                 }
 
                 conversations.push({
-                  id: conversationDoc.id,
+                  id: conversationId,
                   participants: data.participants,
-                  lastMessage: lastMessage || undefined,
-                  createdAt: data.createdAt
-                    ? data.createdAt.toString()
-                    : new Date().toISOString(),
-                  updatedAt: data.updatedAt
-                    ? data.updatedAt.toString()
-                    : new Date().toISOString(),
+                  lastMessage: data.lastMessage,
+                  createdAt: createdAtStr,
+                  updatedAt: updatedAtStr,
                   isAIChat: data.isAIChat || false,
                 });
               }
             } catch (err) {
               console.error(
-                `Error fetching conversation ${conversationId}:`,
+                `[Chat] Error fetching conversation ${conversationId}:`,
                 err
               );
             }
@@ -542,21 +519,28 @@ export const onUserConversationsUpdate = (
 
           // Sort by updatedAt
           conversations.sort((a, b) => {
-            const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-            const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-            return bTime - aTime;
+            return (
+              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            );
           });
 
+          // Log performance metrics
+          const duration = performance.now() - startTime;
           console.log(
-            `Listener ${listenerId} update: ${conversations.length} conversations`
+            `[Chat] Processed ${
+              conversations.length
+            } conversations in ${duration.toFixed(1)}ms`
           );
+
+          // Send to callback
           callback(conversations);
           isFirstCallback = false;
         } catch (error) {
           console.error(
-            `Error in conversations listener ${listenerId}:`,
+            `[Chat] Error in conversations listener ${listenerId}:`,
             error
           );
+          // Don't break the UI - provide empty array on error
           if (isFirstCallback) {
             callback([]);
             isFirstCallback = false;
@@ -567,36 +551,30 @@ export const onUserConversationsUpdate = (
         // Clear the timeout since we received an error response
         clearTimeout(timeoutId);
 
-        // Check specifically for "collection not found" type errors
-        if (
-          error &&
-          typeof error === 'object' &&
-          'code' in error &&
-          (error.code === 'permission-denied' || error.code === 'not-found')
-        ) {
-          console.log(
-            `Firebase conversations collection may not exist yet for listener ${listenerId}, returning empty array`
-          );
-          callback([]);
-          return;
-        }
-
-        console.error(`Error in conversations listener ${listenerId}:`, error);
+        console.error(
+          `[Chat] Error in conversations listener ${listenerId}:`,
+          error
+        );
         // Still call the callback with an empty array to avoid UI being stuck in loading state
-        callback([]);
+        if (isFirstCallback) {
+          callback([]);
+          isFirstCallback = false;
+        }
       }
     );
 
     // Return unsubscribe function
     return () => {
       clearTimeout(timeoutId);
-      console.log(`Removing Firebase conversations listener ${listenerId}`);
+      console.log(
+        `[Chat] Removing Firebase conversations listener ${listenerId}`
+      );
       unsubscribe();
     };
   } catch (error) {
     // Handle errors in setting up the listener
     console.error(
-      `Error setting up conversations listener ${listenerId}:`,
+      `[Chat] Error setting up conversations listener ${listenerId}:`,
       error
     );
     clearTimeout(timeoutId);
