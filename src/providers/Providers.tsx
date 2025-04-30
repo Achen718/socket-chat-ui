@@ -35,7 +35,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <ThemeProvider>
       <ErrorLogger />
-      <DebugPanel />
+      {process.env.NODE_ENV === 'development' && <DebugPanel />}
       {children}
     </ThemeProvider>
   );
