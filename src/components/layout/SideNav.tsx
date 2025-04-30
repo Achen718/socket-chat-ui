@@ -126,23 +126,7 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     preloadUserData();
   }, [user?.id]);
 
-  // Add effect to refresh conversations periodically to ensure side nav is up to date
-  useEffect(() => {
-    if (!user || !user.id) return;
-
-    // Create a refresh interval for backup in case listeners aren't working properly
-    const refreshInterval = setInterval(() => {
-      if (user && user.id) {
-        // Use a silent refresh to not show loading indicators
-        console.log('SideNav: Silent refresh of conversations');
-        fetchConversations();
-      }
-    }, 10000); // Refresh every 10 seconds
-
-    return () => {
-      clearInterval(refreshInterval);
-    };
-  }, [user, fetchConversations]);
+  // Add effect to refresh conversations periodically to ensure side nav is up to dat
 
   // Fetch user data for conversation participants
   useEffect(() => {
