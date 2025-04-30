@@ -55,7 +55,7 @@ export const ChatInput = memo(function ChatInput({
     // Store the fact that we're focused in sessionStorage to maintain focus across re-renders
     try {
       sessionStorage.setItem('chatInputFocused', 'true');
-    } catch (_) {
+    } catch {
       // Ignore storage errors
     }
   };
@@ -69,7 +69,7 @@ export const ChatInput = memo(function ChatInput({
     // Clear the focused flag
     try {
       sessionStorage.removeItem('chatInputFocused');
-    } catch (_) {
+    } catch {
       // Ignore storage errors
     }
   };
@@ -82,7 +82,7 @@ export const ChatInput = memo(function ChatInput({
         inputRef.current.focus();
         setIsFocused(true);
       }
-    } catch (_) {
+    } catch {
       // Ignore storage errors
     }
 
@@ -119,7 +119,7 @@ export const ChatInput = memo(function ChatInput({
           }
         });
       }
-    } catch (_) {
+    } catch {
       // Ignore storage errors
     }
   }, [loading]);
@@ -239,7 +239,8 @@ export const ChatInput = memo(function ChatInput({
             }
             className={cn(
               'min-h-[40px] w-full resize-none border rounded-full py-3 pr-16 pl-4',
-              'max-h-32 overflow-y-auto'
+              'max-h-32 overflow-y-auto',
+              isFocused && 'ring-2 ring-ring ring-offset-1'
             )}
             rows={1}
             disabled={loading || !activeConversation || isSending}
