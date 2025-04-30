@@ -23,7 +23,7 @@ interface UseAuthReturn {
   logout: () => Promise<void>;
 }
 
-export function useAuth(): UseAuthReturn {
+export const useAuth = (): UseAuthReturn => {
   const router = useRouter();
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
@@ -125,6 +125,6 @@ export function useAuth(): UseAuthReturn {
     registerWithEmail,
     logout,
   };
-}
+};
 
 export default useAuth;

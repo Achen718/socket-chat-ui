@@ -1,5 +1,6 @@
-export { default as useAuth } from './useAuth';
-export { default as useChat } from './useChat';
+export { useAuth } from './useAuth';
+export { useChat } from './useChat';
+export { useParticipantData } from './useParticipantData';
 export {
   useErrorHandler,
   ErrorCategories,
