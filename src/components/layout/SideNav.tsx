@@ -163,8 +163,19 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
 
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      // First try to use lastMessage timestamp
+      const aTime = a.lastMessage?.timestamp
+        ? new Date(a.lastMessage.timestamp).getTime()
+        : a.updatedAt
+        ? new Date(a.updatedAt).getTime()
+        : 0;
+
+      const bTime = b.lastMessage?.timestamp
+        ? new Date(b.lastMessage.timestamp).getTime()
+        : b.updatedAt
+        ? new Date(b.updatedAt).getTime()
+        : 0;
+
       return bTime - aTime;
     });
   }, [conversations]);

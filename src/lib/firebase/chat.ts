@@ -317,7 +317,8 @@ export const getUserConversations = async (
         // Query userConversations collection instead
         const q = query(
           collection(db, 'userConversations'),
-          where('userId', '==', userId)
+          where('userId', '==', userId),
+          orderBy('updatedAt', 'desc')
         );
 
         const querySnapshot = await getDocs(q);
@@ -416,7 +417,8 @@ export const onUserConversationsUpdate = (
     // Listen to userConversations collection
     const q = query(
       collection(db, 'userConversations'),
-      where('userId', '==', userId)
+      where('userId', '==', userId),
+      orderBy('updatedAt', 'desc') // Add this line to order by updatedAt
     );
 
     // Add a timeout to handle cases where Firebase might be slow
@@ -517,11 +519,22 @@ export const onUserConversationsUpdate = (
           // Wait for all conversation fetches to complete
           await Promise.all(fetchPromises);
 
-          // Sort by updatedAt
+          // Sort by latest activity - either last message timestamp or updatedAt
           conversations.sort((a, b) => {
-            return (
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-            );
+            // First try to use lastMessage timestamp
+            const aTime = a.lastMessage?.timestamp
+              ? a.lastMessage.timestamp instanceof Timestamp
+                ? a.lastMessage.timestamp.toDate().getTime()
+                : new Date(a.lastMessage.timestamp).getTime()
+              : new Date(a.updatedAt).getTime();
+
+            const bTime = b.lastMessage?.timestamp
+              ? b.lastMessage.timestamp instanceof Timestamp
+                ? b.lastMessage.timestamp.toDate().getTime()
+                : new Date(b.lastMessage.timestamp).getTime()
+              : new Date(b.updatedAt).getTime();
+
+            return bTime - aTime;
           });
 
           // Log performance metrics
@@ -822,24 +835,26 @@ export const sendMessage = async (
           // Force an update to ALL participants' userConversation docs to ensure
           // the sidebar will refresh for all users
           for (const participantId of participants) {
-            // Skip if this is the sender (already updated above)
-            if (participantId === sender) continue;
-
             // Skip AI assistant
             if (participantId === 'ai-assistant') continue;
 
-            // Create a reference to this participant's userConversation document
+            // Create the userConversation reference
             const userConversationRef = doc(
               db,
               'userConversations',
               `${participantId}_${conversationId}`
             );
 
-            // Use set with merge instead of update for safety
+            // Always update the updatedAt timestamp for all participants
+            // This ensures consistent ordering in queries
             batch.set(
               userConversationRef,
               {
                 updatedAt: serverTimestamp(),
+                // If this is the sender, also update lastReadTimestamp
+                ...(participantId === sender
+                  ? { lastReadTimestamp: serverTimestamp() }
+                  : {}),
               },
               { merge: true }
             );
