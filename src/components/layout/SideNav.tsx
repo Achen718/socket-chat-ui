@@ -6,6 +6,7 @@ import { useAuth, useChat } from '@/hooks';
 import { sendMessage as sendFirestoreMessage } from '@/lib/firebase/chat';
 import { formatUserDisplayName } from '@/lib/firebase/user';
 import { db } from '@/lib/firebase/config';
+import MarkdownContent from '@/components/shared/MarkdownContent';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -457,8 +458,14 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
                           </span>
                         )}
                         <span className='text-xs text-muted-foreground truncate w-full'>
-                          {lastMessageText.substring(0, 30)}
-                          {lastMessageText.length > 30 ? '...' : ''}
+                          <MarkdownContent
+                            content={lastMessageText}
+                            isAI={
+                              conversation.lastMessage?.sender ===
+                              'ai-assistant'
+                            }
+                            preview={true}
+                          />
                         </span>
                       </div>
                     </Button>

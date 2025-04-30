@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Check, CheckCheck, Bot } from 'lucide-react';
+import MarkdownContent from '@/components/shared/MarkdownContent';
 import { cn } from '@/lib/utils';
 import { Message as MessageType } from '@/types';
 import { useAuth } from '@/hooks';
@@ -94,7 +95,9 @@ export function Message({ message, isLastMessage = false }: MessageProps) {
             : 'bg-muted'
         )}
       >
-        <div className='break-words'>{message.content}</div>
+        <div className='break-words'>
+          <MarkdownContent content={message.content} isAI={isAI} />
+        </div>
 
         <div
           className={cn(
