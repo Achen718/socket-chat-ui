@@ -1,37 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useUIStore } from '@/store';
 import { Header } from './Header';
 import { SideNav } from './SideNav';
+import { useSidebar } from '@/hooks/useSidebar';
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [isMounted, setIsMounted] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const mobileSidebarOpen = useUIStore((state) => state.mobileSidebarOpen);
-  const setMobileSidebar = useUIStore((state) => state.setMobileSidebar);
-
-  // Prevent hydration errors
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  // Sync local state with store
-  useEffect(() => {
-    setSidebarOpen(mobileSidebarOpen);
-  }, [mobileSidebarOpen]);
-
-  const toggleSidebar = () => {
-    setMobileSidebar(!sidebarOpen);
-  };
-
-  const closeSidebar = () => {
-    setMobileSidebar(false);
-  };
+  const { isMounted, sidebarOpen, toggleSidebar, closeSidebar } = useSidebar();
 
   if (!isMounted) {
     return null;
