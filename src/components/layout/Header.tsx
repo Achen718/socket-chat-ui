@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Menu, LogOut, Settings, MessageSquare, Moon, Sun } from 'lucide-react';
 import { useAuth } from '@/hooks';
 import { useUIStore } from '@/store';
-import { useTheme } from './ThemeProvider';
+import { useTheme } from '@/providers/ThemeProvider';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -67,7 +67,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         </Button>
         <Link href='/chat' className='flex items-center gap-2'>
           <MessageSquare className='h-5 w-5' />
-          <span className='font-semibold'>ChatApp</span>
+          <span className='font-semibold'>SocketChat Ui</span>
         </Link>
       </div>
 

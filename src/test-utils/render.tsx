@@ -1,6 +1,6 @@
 import React, { ReactElement } from 'react';
 import { render, RenderOptions, RenderResult } from '@testing-library/react';
-import { ThemeProvider } from '@/components/layout/ThemeProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider';
 import { mockAuthValues, mockRouterValues } from './mocks';
 import { useRouter } from 'next/navigation';
 import * as hooks from '@/hooks';

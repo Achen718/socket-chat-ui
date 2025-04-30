@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useAuthStore, useSocketStore } from '@/store';
 import { ErrorLogger } from '@/components/shared/ErrorLogger';
 import { DebugPanel } from '@/components/shared/DebugPanel';
+import { ThemeProvider } from './ThemeProvider';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -32,10 +33,10 @@ export function Providers({ children }: ProvidersProps) {
   }, [user, connect, disconnect]);
 
   return (
-    <>
+    <ThemeProvider>
       <ErrorLogger />
       <DebugPanel />
       {children}
-    </>
+    </ThemeProvider>
   );
 }
