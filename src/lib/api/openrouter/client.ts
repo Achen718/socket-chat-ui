@@ -42,7 +42,7 @@ export async function sendRequest<T = OpenRouterResponse>(
 ): Promise<AxiosResponse<T>> {
   // The rest of your function remains the same
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     log.debug(AREAS.GENERAL, `Sending request to OpenRouter API...`);
@@ -53,7 +53,7 @@ export async function sendRequest<T = OpenRouterResponse>(
         model: MODEL,
         messages: messages,
         temperature: options.temperature || 0.7,
-        max_tokens: options.max_tokens || 500,
+        max_tokens: options.max_tokens || 2000,
         ...options,
       },
       {
