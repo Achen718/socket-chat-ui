@@ -1,7 +1,6 @@
-// src/components/chat/ConversationList.tsx
 import { Conversation, User } from '@/types';
 import { Button } from '@/components/ui/button';
-
+import MarkdownContent from '../shared/MarkdownContent';
 interface ConversationListProps {
   conversations: Conversation[];
   activeConversation: Conversation | null;
@@ -69,9 +68,14 @@ export function ConversationList({
                   <p className='truncate'>
                     {getParticipantDisplayName(conversation)}
                   </p>
-                  <p className='text-xs text-muted-foreground truncate'>
-                    {conversation.lastMessage?.content || 'No messages yet'}
-                  </p>
+                  <span className='text-xs text-muted-foreground truncate'>
+                    <MarkdownContent
+                      content={
+                        conversation.lastMessage?.content || 'No messages yet'
+                      }
+                      isAI={conversation.isAIChat}
+                    />
+                  </span>
                 </div>
               </div>
             </Button>
