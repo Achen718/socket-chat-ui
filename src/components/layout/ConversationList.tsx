@@ -1,6 +1,7 @@
 import { Conversation, User } from '@/types';
 import { Button } from '@/components/ui/button';
 import MarkdownContent from '../shared/MarkdownContent';
+import { Bot } from 'lucide-react';
 interface ConversationListProps {
   conversations: Conversation[];
   activeConversation: Conversation | null;
@@ -60,7 +61,13 @@ export function ConversationList({
               <div className='flex items-center gap-2 w-full'>
                 {/* Avatar or initials */}
                 <div className='w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs'>
-                  {getInitials(getParticipantDisplayName(conversation))}
+                  {getParticipantDisplayName(conversation) ===
+                  'AI Assistant' ? (
+                    <Bot className='h-5 w-5' />
+                  ) : (
+                    // Display initials of the participants
+                    getInitials(getParticipantDisplayName(conversation))
+                  )}
                 </div>
 
                 {/* Name and last message */}
