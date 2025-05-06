@@ -41,6 +41,19 @@ export function Header({ onMenuClick }: HeaderProps) {
     }
   };
 
+  const handleThemeToggle = () => {
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)')
+        .matches
+        ? 'dark'
+        : 'light';
+      console.log(systemTheme, 'systemTheme');
+      setTheme(systemTheme === 'dark' ? 'light' : 'dark');
+    } else {
+      setTheme(theme === 'dark' ? 'light' : 'dark');
+    }
+  };
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -72,11 +85,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className='flex items-center gap-2'>
-        <Button
-          variant='ghost'
-          size='icon'
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        >
+        <Button variant='ghost' size='icon' onClick={handleThemeToggle}>
           {theme === 'dark' ? (
             <Sun className='h-5 w-5' />
           ) : (
