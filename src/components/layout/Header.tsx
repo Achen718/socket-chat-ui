@@ -47,7 +47,6 @@ export function Header({ onMenuClick }: HeaderProps) {
         .matches
         ? 'dark'
         : 'light';
-      console.log(systemTheme, 'systemTheme');
       setTheme(systemTheme === 'dark' ? 'light' : 'dark');
     } else {
       setTheme(theme === 'dark' ? 'light' : 'dark');
