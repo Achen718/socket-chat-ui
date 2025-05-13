@@ -2,4 +2,4 @@
 export * from './messageService';
 export * from './conversationService';
 export * from './realtimeService';
-// export * from './migrationService'; // Will add later
+export * from './migrationService';
