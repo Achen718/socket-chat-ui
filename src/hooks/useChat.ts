@@ -12,7 +12,8 @@ interface UseChatReturn {
   conversations: Conversation[];
   activeConversation: Conversation | null;
   messages: Message[];
-  loading: boolean;
+  conversationsLoading: boolean;
+  messagesLoading: boolean;
   error: string | null;
   fetchConversations: () => Promise<void>;
   setActiveConversation: (conversation: Conversation | null) => void;
@@ -31,7 +32,8 @@ export const useChat = (): UseChatReturn => {
     conversations,
     activeConversation,
     messages,
-    loading,
+    conversationsLoading,
+    messagesLoading,
     error,
     fetchConversations: fetchAllConversations,
     setActiveConversation,
@@ -263,7 +265,8 @@ export const useChat = (): UseChatReturn => {
     conversations,
     activeConversation,
     messages,
-    loading,
+    conversationsLoading,
+    messagesLoading,
     error,
     fetchConversations,
     setActiveConversation,

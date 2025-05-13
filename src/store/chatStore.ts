@@ -74,9 +74,21 @@ export const useChatStore = create<ChatStore>()(
       }
 
       set((state) => {
-        state.loading = loading;
+        // Determine which loading state to update based on the source
+        if (source.startsWith('fetchConversations')) {
+          state.conversationsLoading = loading;
+        } else if (source.startsWith('fetchMessages')) {
+          state.messagesLoading = loading;
+        } else if (source.startsWith('createNewConversation')) {
+          state.conversationsLoading = loading;
+        } else {
+          // For other operations, update both for backward compatibility
+          state.conversationsLoading = loading;
+          state.messagesLoading = loading;
+        }
+
         if (loading) {
-          state.error = null; // Clear error when starting loading
+          state.error = null;
         }
       });
 
@@ -85,13 +97,43 @@ export const useChatStore = create<ChatStore>()(
         // Set a longer timeout (8 seconds) to account for slower operations
         activeTimeouts[timeoutKey] = setTimeout(() => {
           const currentState = get();
-          if (currentState.loading) {
-            console.warn(
-              `Loading state from "${source}" was active for too long, forcing it to false`
-            );
-            set((state) => {
-              state.loading = false;
-            });
+
+          // Check which loading state to clear based on source
+          if (
+            source.startsWith('fetchConversations') ||
+            source.startsWith('createNewConversation')
+          ) {
+            if (currentState.conversationsLoading) {
+              console.warn(
+                `Loading state from "${source}" was active for too long, forcing it to false`
+              );
+              set((state) => {
+                state.conversationsLoading = false;
+              });
+            }
+          } else if (source.startsWith('fetchMessages')) {
+            if (currentState.messagesLoading) {
+              console.warn(
+                `Loading state from "${source}" was active for too long, forcing it to false`
+              );
+              set((state) => {
+                state.messagesLoading = false;
+              });
+            }
+          } else {
+            // For other operations, check both states
+            if (
+              currentState.conversationsLoading ||
+              currentState.messagesLoading
+            ) {
+              console.warn(
+                `Loading state from "${source}" was active for too long, forcing it to false`
+              );
+              set((state) => {
+                state.conversationsLoading = false;
+                state.messagesLoading = false;
+              });
+            }
           }
 
           // Clear timeout reference
@@ -105,7 +147,8 @@ export const useChatStore = create<ChatStore>()(
       conversations: [],
       activeConversation: null,
       messages: [],
-      loading: false,
+      conversationsLoading: false, // Replace loading with specific states
+      messagesLoading: false,
       error: null,
 
       // Fetch user conversations
@@ -136,7 +179,7 @@ export const useChatStore = create<ChatStore>()(
 
             set((state) => {
               state.conversations = conversations;
-              state.loading = false;
+              state.conversationsLoading = false; // Fixed: use specific loading state
             });
           } catch (fetchError) {
             // Check if the error is due to missing collections (common for new users)
@@ -153,7 +196,7 @@ export const useChatStore = create<ChatStore>()(
               );
               set((state) => {
                 state.conversations = [];
-                state.loading = false;
+                state.conversationsLoading = false; // Fixed: use specific loading state
               });
               return;
             }
@@ -167,7 +210,7 @@ export const useChatStore = create<ChatStore>()(
 
           set((state) => {
             state.error = errorMessage;
-            state.loading = false;
+            state.conversationsLoading = false; // Fixed: use specific loading state
           });
         }
       },
@@ -199,7 +242,8 @@ export const useChatStore = create<ChatStore>()(
         } else {
           // Make sure loading is false if we're clearing the active conversation
           set((state) => {
-            state.loading = false;
+            state.conversationsLoading = false; // Fixed: use specific loading state
+            state.messagesLoading = false; // Also clear message loading state
           });
         }
       },
@@ -216,7 +260,7 @@ export const useChatStore = create<ChatStore>()(
             if (!state.conversations.some((c) => c.id === conversation.id)) {
               state.conversations = [conversation, ...state.conversations];
             }
-            state.loading = false;
+            state.conversationsLoading = false;
           });
 
           return conversation;
@@ -226,7 +270,7 @@ export const useChatStore = create<ChatStore>()(
 
           set((state) => {
             state.error = errorMessage;
-            state.loading = false;
+            state.conversationsLoading = false;
           });
 
           throw error;
@@ -274,7 +318,7 @@ export const useChatStore = create<ChatStore>()(
 
               // Only update loading state but keep the current messages
               set((state) => {
-                state.loading = false;
+                state.messagesLoading = false; // Fixed: use specific loading state
               });
 
               return;
@@ -283,7 +327,7 @@ export const useChatStore = create<ChatStore>()(
             // Normal case - update with the new messages
             set((state) => {
               state.messages = messages;
-              state.loading = false;
+              state.messagesLoading = false; // Fixed: use specific loading state
             });
           } catch (fetchError) {
             // Check if the error is due to missing collections (common for new conversations)
@@ -300,7 +344,7 @@ export const useChatStore = create<ChatStore>()(
               );
               set((state) => {
                 state.messages = [];
-                state.loading = false;
+                state.messagesLoading = false; // Fixed: use specific loading state
               });
               return;
             }
@@ -314,7 +358,7 @@ export const useChatStore = create<ChatStore>()(
 
           set((state) => {
             state.error = errorMessage;
-            state.loading = false;
+            state.messagesLoading = false; // Fixed: use specific loading state
           });
         }
       },
@@ -520,7 +564,7 @@ export const useChatStore = create<ChatStore>()(
               state.activeConversation = updatedActiveConversation;
             }
 
-            state.loading = false; // Ensure loading is set to false
+            state.conversationsLoading = false; // Fixed: use specific loading state
           });
         });
       },
@@ -557,7 +601,7 @@ export const useChatStore = create<ChatStore>()(
 
             // Always update the state to ensure UI reflects the latest data
             state.messages = messages;
-            state.loading = false; // Ensure loading is set to false when messages are updated
+            state.messagesLoading = false; // Fixed: use specific loading state when messages are updated
 
             // If we have an active conversation but it's not loaded in the state yet,
             // try to find it in the conversations array and set it

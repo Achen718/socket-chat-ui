@@ -8,6 +8,7 @@ export interface ChatState {
   conversations: Conversation[];
   activeConversation: Conversation | null;
   messages: Message[];
-  loading: boolean;
+  conversationsLoading: boolean;
+  messagesLoading: boolean;
   error: string | null;
 }

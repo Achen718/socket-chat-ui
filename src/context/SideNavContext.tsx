@@ -19,7 +19,8 @@ interface SideNavContextType {
   isCreatingAIChat: boolean;
   showUserSearch: boolean;
   setShowUserSearch: (show: boolean) => void;
-  loading: boolean;
+  conversationsLoading: boolean; // Changed from loading to conversationsLoading
+  messagesLoading: boolean; // Added new state
   forceShowEmpty: boolean;
 
   // Data
@@ -54,7 +55,8 @@ export const SideNavProvider = ({ children }: { children: ReactNode }) => {
   const {
     conversations,
     activeConversation,
-    loading: chatLoading,
+    conversationsLoading, // Changed from loading to conversationsLoading
+    messagesLoading, // Added new state
     setActiveConversation,
     createNewConversation,
   } = useChat();
@@ -75,7 +77,7 @@ export const SideNavProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
-    if (chatLoading && conversations.length === 0) {
+    if (conversationsLoading && conversations.length === 0) {
       // After 5 seconds of loading with no conversations, show empty state
       timeoutId = setTimeout(() => {
         setForceShowEmpty(true);
@@ -89,7 +91,7 @@ export const SideNavProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [chatLoading, conversations.length]);
+  }, [conversationsLoading, conversations.length]);
 
   // Handle conversation selection
   const handleConversationClick = useCallback(
@@ -182,7 +184,8 @@ export const SideNavProvider = ({ children }: { children: ReactNode }) => {
         isCreatingAIChat,
         showUserSearch,
         setShowUserSearch,
-        loading: chatLoading,
+        conversationsLoading, // Changed from loading to conversationsLoading
+        messagesLoading, // Added new state
         forceShowEmpty,
 
         // Data

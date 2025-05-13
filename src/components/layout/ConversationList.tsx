@@ -2,10 +2,11 @@ import { Conversation, User } from '@/types';
 import { Button } from '@/components/ui/button';
 import MarkdownContent from '../shared/MarkdownContent';
 import { Bot } from 'lucide-react';
+
 interface ConversationListProps {
   conversations: Conversation[];
   activeConversation: Conversation | null;
-  loading: boolean;
+  conversationsLoading: boolean;
   forceShowEmpty: boolean;
   currentUserId?: string;
   participantUsers: Map<string, User>;
@@ -18,7 +19,7 @@ interface ConversationListProps {
 export function ConversationList({
   conversations,
   activeConversation,
-  loading,
+  conversationsLoading,
   forceShowEmpty,
   onConversationClick,
   getParticipantDisplayName,
@@ -30,7 +31,7 @@ export function ConversationList({
         <h2 className='text-sm font-semibold'>Recent Chats</h2>
       </div>
 
-      {loading && (
+      {conversationsLoading && (
         <div className='p-4 text-center'>
           <p className='text-sm text-muted-foreground'>
             Loading conversations...
@@ -38,13 +39,16 @@ export function ConversationList({
         </div>
       )}
 
-      {!loading && (conversations.length === 0 || forceShowEmpty) && (
-        <div className='p-4 text-center'>
-          <p className='text-sm text-muted-foreground'>No conversations yet</p>
-        </div>
-      )}
+      {!conversationsLoading &&
+        (conversations.length === 0 || forceShowEmpty) && (
+          <div className='p-4 text-center'>
+            <p className='text-sm text-muted-foreground'>
+              No conversations yet
+            </p>
+          </div>
+        )}
 
-      {!loading && conversations.length > 0 && !forceShowEmpty && (
+      {!conversationsLoading && conversations.length > 0 && !forceShowEmpty && (
         <div className='space-y-1 px-1'>
           {conversations.map((conversation) => (
             <Button

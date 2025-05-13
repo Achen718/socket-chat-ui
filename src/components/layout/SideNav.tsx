@@ -1,11 +1,11 @@
 'use client';
 
-import { useAuth } from '@/hooks';
+import { useAuth } from '@/hooks/useAuth';
 import { useSideNav } from '@/context/SideNavContext';
+import { ConversationList } from './ConversationList';
 import { Separator } from '@/components/ui/separator';
-import { SideNavHeader } from '@/components/layout/SideNavHeader';
-import { ConversationList } from '@/components/layout/ConversationList';
-import { UserSearchDialog } from '@/components/user/UserSearchDialog';
+import { SideNavHeader } from './SideNavHeader';
+import { UserSearchDialog } from '../user/UserSearchDialog';
 
 interface SideNavProps {
   isMobile?: boolean;
@@ -15,10 +15,9 @@ interface SideNavProps {
 export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
   const { user } = useAuth();
   const {
-    // Extract everything we need from the context
     conversations,
     activeConversation,
-    loading,
+    conversationsLoading,
     forceShowEmpty,
     participantUsers,
     isCreatingAIChat,
@@ -32,6 +31,13 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
     getOtherParticipant,
     getInitials,
   } = useSideNav();
+
+  const handleConversationClickWrapper = (id: string) => {
+    handleConversationClick(id);
+    if (onItemClick) {
+      onItemClick();
+    }
+  };
 
   return (
     <>
@@ -49,18 +55,17 @@ export function SideNav({ isMobile = false, onItemClick }: SideNavProps) {
         <ConversationList
           conversations={conversations}
           activeConversation={activeConversation}
-          loading={loading}
+          conversationsLoading={conversationsLoading} // Changed from loading to conversationsLoading
           forceShowEmpty={forceShowEmpty}
           currentUserId={user?.id}
           participantUsers={participantUsers}
-          onConversationClick={(id) => handleConversationClick(id, onItemClick)}
+          onConversationClick={handleConversationClickWrapper}
           getParticipantDisplayName={getConversationName}
           getOtherParticipant={getOtherParticipant}
           getInitials={getInitials}
         />
       </div>
 
-      {/* User Search Dialog */}
       {user && (
         <UserSearchDialog
           open={showUserSearch}
