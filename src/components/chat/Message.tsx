@@ -80,7 +80,7 @@ export function Message({ message, isLastMessage = false }: MessageProps) {
             <Bot className='h-5 w-5' />
           ) : (
             <>
-              <AvatarImage src={user?.photoURL || ''} alt='User' />
+              <AvatarImage src='' alt='User' />
               <AvatarFallback>A</AvatarFallback>
             </>
           )}
