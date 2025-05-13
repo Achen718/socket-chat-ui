@@ -169,9 +169,12 @@ export const useChat = (): UseChatReturn => {
 
   // Cleanup all listeners when component unmounts
   useEffect(() => {
+    // Capture the current value of the ref
+    const currentHookInstanceId = hookInstanceId.current;
+
     return () => {
       console.log(
-        `[${hookInstanceId.current}] Cleaning up all listeners on unmount`
+        `[${currentHookInstanceId}] Cleaning up all listeners on unmount`
       );
 
       if (conversationsUnsubscribe.current) {
