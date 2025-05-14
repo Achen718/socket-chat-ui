@@ -15,7 +15,7 @@ export function ChatContainer() {
   const {
     activeConversation,
     messages,
-    loading,
+    messagesLoading,
     fetchMessages,
     sendMessage,
     sendAIMessage,
@@ -71,7 +71,7 @@ export function ChatContainer() {
       <div ref={messageListRef} className='flex-1 overflow-auto'>
         <MessageList
           messages={messages}
-          loading={loading}
+          loading={messagesLoading}
           isRefreshing={isRefreshing}
           activeConversation={activeConversation}
           fetchMessages={stableFetchMessages}
@@ -83,7 +83,7 @@ export function ChatContainer() {
         <StableWrapper>
           <ChatInput
             activeConversation={activeConversation}
-            loading={loading}
+            loading={messagesLoading}
             sendMessage={stableSendMessage}
             sendAIMessage={stableSendAIMessage}
           />
