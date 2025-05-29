@@ -7,13 +7,10 @@ import { createAiMessagesOperations } from './aiMessages';
 import { createListenerOperations } from './listeners';
 import { createSocketOperations } from './socketEvents';
 
-// Full interface for what this slice exposes
 export interface MessageSlice {
-  // State
   messages: Message[];
   messagesLoading: boolean;
 
-  // Operations
   fetchMessages: (conversationId: string) => Promise<void>;
   sendMessage: (
     conversationId: string,
@@ -34,13 +31,11 @@ export interface MessageSlice {
   initMessagesListener: (conversationId: string) => () => void;
 }
 
-// Create the full message slice
 export const createMessageSlice = <T extends MessageSliceState>(
   set: SetFn<T>,
   get: () => T,
   setLoadingWithTimeout: (loading: boolean, source: string) => void
 ): MessageSlice => {
-  // Create individual operation modules
   const fetchOps = createFetchMessagesOperations<T>(
     set,
     get,
@@ -51,7 +46,6 @@ export const createMessageSlice = <T extends MessageSliceState>(
   const listenerOps = createListenerOperations<T>(set);
   const socketOps = createSocketOperations();
 
-  // Combine into a single slice
   return {
     ...initialMessageState,
     ...fetchOps,

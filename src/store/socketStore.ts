@@ -7,7 +7,6 @@ interface SocketState {
   socket: Socket | null;
   isConnected: boolean;
 
-  // Actions
   connect: (user: User) => void;
   disconnect: () => void;
 }

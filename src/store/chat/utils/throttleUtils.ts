@@ -1,6 +1,5 @@
-// Track recent API calls to prevent duplicates
 const recentCalls: { [key: string]: number } = {};
-const FETCH_COOLDOWN = 3000; // 3 seconds
+const FETCH_COOLDOWN = 3000;
 
 /**
  * Throttle function to prevent frequent API calls
@@ -15,7 +14,6 @@ export const shouldProceed = (key: string): boolean => {
     return false;
   }
 
-  // Record this call time
   recentCalls[key] = now;
   return true;
 };

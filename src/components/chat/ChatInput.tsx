@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
-// Props interface for ChatInput
 interface ChatInputProps {
   activeConversation: Conversation | null;
   loading: boolean;
@@ -15,7 +14,6 @@ interface ChatInputProps {
   sendAIMessage: (message: string, aiRecipientId: string) => Promise<void>;
 }
 
-// Use memo to prevent re-renders from parent
 export const ChatInput = memo(function ChatInput({
   activeConversation,
   loading,
@@ -25,28 +23,23 @@ export const ChatInput = memo(function ChatInput({
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  // isFocused is used in the focus handler logic
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastFocusTime = useRef(Date.now());
   const focusIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const mutationObserverRef = useRef<MutationObserver | null>(null);
-  // Track if we're currently reapplying focus to avoid loops
   const isReapplyingFocus = useRef(false);
 
-  // Focus input on mount and when conversation changes
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
     }
   }, [activeConversation?.id]);
 
-  // Keep track of focus state to help us re-apply focus when needed
   const handleFocus = () => {
     setIsFocused(true);
     lastFocusTime.current = Date.now();
 
-    // Clear any existing focus interval when manually focused
     if (focusIntervalRef.current) {
       clearInterval(focusIntervalRef.current);
       focusIntervalRef.current = null;

@@ -21,14 +21,12 @@ export const createSendMessagesOperations = <T extends MessageSliceState>(
     content: string
   ) => {
     try {
-      // Send message to Firestore
       const message = await sendFirestoreMessage(
         conversationId,
         senderId,
         content
       );
 
-      // Send message via Socket.IO for real-time delivery
       sendSocketMessage(message);
 
       return;

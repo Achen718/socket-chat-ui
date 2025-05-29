@@ -5,7 +5,6 @@ import { Message as MessageType, Conversation } from '@/types';
 import { Message } from './Message';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// Props interface for MessageList
 interface MessageListProps {
   messages: MessageType[];
   loading: boolean;
@@ -25,11 +24,9 @@ export function MessageList({
   const previousMessageCount = useRef(0);
   const [localMessages, setLocalMessages] = useState(messages);
 
-  // Update local messages when messages from hook change
   useEffect(() => {
     setLocalMessages(messages);
 
-    // Log message count changes for debugging
     if (previousMessageCount.current !== messages.length) {
       console.log(
         `MessageList: Message count changed from ${previousMessageCount.current} to ${messages.length}`
@@ -38,15 +35,12 @@ export function MessageList({
     }
   }, [messages]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [localMessages]);
 
-  // Force refresh messages when active conversation changes
-  // Use a ref to track if we've already fetched for this conversation
   const hasInitialFetchRef = useRef<string | null>(null);
 
   useEffect(() => {

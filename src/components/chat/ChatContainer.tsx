@@ -6,7 +6,6 @@ import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { useChat } from '@/hooks';
 
-// Create a stabilized wrapper to prevent re-renders
 const StableWrapper = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
@@ -23,10 +22,8 @@ export function ChatContainer() {
   const messageListRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
 
-  // Local state to track when a message refresh is happening
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Create stabilized message sending functions that won't change on re-renders
   const stableSendMessage = useCallback(
     async (content: string) => {
       try {
@@ -48,10 +45,8 @@ export function ChatContainer() {
     },
     [sendAIMessage]
   );
-
-  // Wrap fetchMessages to track refresh state
   const stableFetchMessages = useCallback(async () => {
-    if (isRefreshing) return; // Prevent concurrent refreshes
+    if (isRefreshing) return;
 
     try {
       setIsRefreshing(true);
@@ -67,7 +62,6 @@ export function ChatContainer() {
     <div className='flex flex-col h-full chat-container'>
       <ChatHeader />
 
-      {/* Message list contained in its own div with its own React tree */}
       <div ref={messageListRef} className='flex-1 overflow-auto'>
         <MessageList
           messages={messages}
@@ -78,7 +72,6 @@ export function ChatContainer() {
         />
       </div>
 
-      {/* Input area is isolated from message list updates */}
       <div ref={inputContainerRef}>
         <StableWrapper>
           <ChatInput

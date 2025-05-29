@@ -1,9 +1,7 @@
-// Mock module imports
 import { useRouter } from 'next/navigation';
 import * as hooks from '@/hooks';
 import * as stores from '@/store';
 
-// Setup mock modules
 jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
 }));
@@ -24,7 +22,6 @@ jest.mock('@/store', () => ({
   useSocketStore: jest.fn(),
 }));
 
-// Default mock values
 export const mockAuthValues = {
   user: null,
   loading: false,
@@ -56,15 +53,12 @@ export const mockUseSocketReturn = {
   isConnected: false,
 };
 
-// Helper functions to reset mocks
 export function resetAllMocks() {
   jest.clearAllMocks();
 
-  // Reset specific mocks to their default values
   jest.mocked(hooks.useAuth).mockReturnValue({ ...mockAuthValues });
   jest.mocked(useRouter).mockReturnValue({ ...mockRouterValues });
 
-  // Reset the store mocks
   jest.mocked(stores.useSocketStore).mockImplementation((selector) => {
     if (selector) {
       return selector(mockSocketValues);
@@ -73,7 +67,6 @@ export function resetAllMocks() {
   });
 }
 
-// Create specific mock factories
 export function createAuthMock(overrides = {}) {
   return {
     ...mockAuthValues,

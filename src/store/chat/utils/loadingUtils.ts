@@ -1,13 +1,11 @@
 import { StoreApi } from 'zustand';
 
-// Define interface for the minimum required state properties
 interface LoadableState {
   conversationsLoading: boolean;
   messagesLoading: boolean;
   error: string | null;
 }
 
-// Track active timeouts to prevent duplicates
 const activeTimeouts: { [key: string]: NodeJS.Timeout } = {};
 
 /**
@@ -17,9 +15,7 @@ export const createLoadingManager = <T extends LoadableState>(
   store: StoreApi<T>
 ) => {
   const { getState, setState } = store;
-
   return (loading: boolean, source: string = 'unknown') => {
-    // Always clear any existing timeout first to prevent duplicate warnings
     const timeoutKey = `loading_${source}`;
     if (activeTimeouts[timeoutKey]) {
       clearTimeout(activeTimeouts[timeoutKey]);
@@ -27,7 +23,6 @@ export const createLoadingManager = <T extends LoadableState>(
     }
 
     setState((state) => {
-      // Determine which loading state to update based on the source
       if (source.startsWith('fetchConversations')) {
         state.conversationsLoading = loading;
       } else if (source.startsWith('fetchMessages')) {
@@ -35,7 +30,6 @@ export const createLoadingManager = <T extends LoadableState>(
       } else if (source.startsWith('createNewConversation')) {
         state.conversationsLoading = loading;
       } else {
-        // For other operations, update both for backward compatibility
         state.conversationsLoading = loading;
         state.messagesLoading = loading;
       }
@@ -46,13 +40,10 @@ export const createLoadingManager = <T extends LoadableState>(
       return state;
     });
 
-    // If we're setting loading to true, also set a timeout to clear it
     if (loading) {
-      // Set a safety timeout to prevent stuck loading states
       activeTimeouts[timeoutKey] = setTimeout(() => {
         const currentState = getState();
 
-        // Check which loading state to clear based on source
         if (
           source.startsWith('fetchConversations') ||
           source.startsWith('createNewConversation')
@@ -77,7 +68,6 @@ export const createLoadingManager = <T extends LoadableState>(
             });
           }
         } else {
-          // For other operations, check both states
           if (
             currentState.conversationsLoading ||
             currentState.messagesLoading
@@ -93,9 +83,8 @@ export const createLoadingManager = <T extends LoadableState>(
           }
         }
 
-        // Clear timeout reference
         delete activeTimeouts[timeoutKey];
-      }, 8000); // 8 second timeout
+      }, 8000);
     }
   };
 };

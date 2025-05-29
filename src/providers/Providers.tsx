@@ -16,7 +16,6 @@ export function Providers({ children }: ProvidersProps) {
   const connect = useSocketStore((state) => state.connect);
   const disconnect = useSocketStore((state) => state.disconnect);
 
-  // Initialize authentication listener on mount
   useEffect(() => {
     const unsubscribe = initAuthListener();
     return () => {

@@ -1,22 +1,18 @@
 import { Message } from '@/types';
 import { SetFn, ChatStoreState, FirebaseError } from '@/store/chat/types';
 
-// Core state for message slice
 export interface MessageState {
   messages: Message[];
   messagesLoading: boolean;
 }
 
-// Initial state values
 export const initialMessageState: MessageState = {
   messages: [],
   messagesLoading: false,
 };
 
-// Type for slices that need to access shared state
 export type MessageSliceState = ChatStoreState;
 
-// Common error handling function
 export const handleMessageError = <T extends MessageSliceState>(
   set: SetFn<T>,
   error: unknown,
@@ -31,7 +27,6 @@ export const handleMessageError = <T extends MessageSliceState>(
   });
 };
 
-// Check if error is a Firebase collection not found error
 export const isCollectionNotFoundError = (error: unknown): boolean => {
   const fbError = error as FirebaseError;
   return (

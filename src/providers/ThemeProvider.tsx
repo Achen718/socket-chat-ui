@@ -42,11 +42,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
     root.classList.remove('light', 'dark');
     root.classList.add(resolvedTheme);
-
-    // Update UI store dark mode
     setDarkMode(resolvedTheme === 'dark');
 
-    // Save theme to localStorage
     localStorage.setItem('theme', theme);
   }, [theme, setDarkMode]);
 

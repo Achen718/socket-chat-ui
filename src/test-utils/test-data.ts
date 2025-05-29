@@ -1,4 +1,3 @@
-// Sample user data for tests
 export const testUsers = {
   standard: {
     id: 'test-user-id',
@@ -18,7 +17,6 @@ export const testUsers = {
   },
 };
 
-// Sample message data for tests
 export const testMessages = [
   {
     id: 'msg-1',
@@ -36,7 +34,6 @@ export const testMessages = [
   },
 ];
 
-// Sample chat data for tests
 export const testChats = {
   direct: {
     id: 'chat-1',
