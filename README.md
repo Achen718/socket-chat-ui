@@ -16,16 +16,13 @@ A modern, real-time chat application with AI integration built using Next.js, Re
 ## Tech Stack
 
 ### Frontend
-- **Framework**: React.js with Next.js 15
-- **TypeScript**: For type safety and better developer experience
-- **State Management**: Zustand with Immer for immutability
-- **Styling**: Tailwind CSS with shadcn/ui components
-- **Server State**: React Query for data fetching and caching
-- **Forms**: React Hook Form with Zod validation
-
+- **Framework & Language**: React.js with Next.js 15, TypeScript
+- **UI & State Management**: Tailwind CSS with shadcn/ui, Zustand (with Immer), React Query
+- 
 ### Backend & Services
-- **Authentication**: Firebase Authentication
-- **Database**: Firebase Firestore
+- **Framework**: Node.js/Express.js
+- **Authentication**: Firebase
+- **Database**: Firebase Cloud Firestore
 - **Real-time Communication**: Socket.IO
 - **AI Integration**: DeepSeek R1 API via OpenRouter (pre-trained model)
 - **Planned AI Enhancements**: Vercel AI SDK, LangChain, RAG with embeddings
