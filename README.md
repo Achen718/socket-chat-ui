@@ -18,7 +18,7 @@ A modern, real-time chat application with AI integration built using Next.js, Re
 ### Frontend
 - **Framework & Language**: React.js with Next.js 15, TypeScript
 - **UI & State Management**: Tailwind CSS with shadcn/ui, Zustand (with Immer), React Query
-- 
+
 ### Backend & Services
 - **Framework**: Node.js/Express.js
 - **Authentication**: Firebase
